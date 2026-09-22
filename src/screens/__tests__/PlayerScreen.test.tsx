@@ -8,6 +8,7 @@ import {
   getStreamingConfig,
 } from '../../api/rommClient';
 import { useAuth } from '../../auth/AuthContext';
+import { requestTVFocus } from '../../input/tvFocus';
 import {
   setInBrowserPlayEnabled,
   setLoginPath,
@@ -18,8 +19,10 @@ import { PlayerScreen } from '../PlayerScreen';
 
 jest.mock('../../auth/AuthContext');
 jest.mock('../../api/rommClient');
+jest.mock('../../input/tvFocus');
 
 const mockedUseAuth = jest.mocked(useAuth);
+const mockedRequestTVFocus = jest.mocked(requestTVFocus);
 const mockedGetRom = jest.mocked(getRom);
 const mockedGetHeartbeat = jest.mocked(getHeartbeat);
 const mockedGetConfig = jest.mocked(getConfig);
@@ -61,6 +64,15 @@ async function renderPlayer(platformSlug = 'snes', { romFails = false } = {}) {
   await render(<PlayerScreen {...screenProps.props} />);
   const webview = await screen.findByTestId('player-webview');
   return { ...screenProps, webview };
+}
+
+/** The menu's focus container reaching the screen, which is what takes focus. */
+async function layOutMenu() {
+  await act(async () => {
+    fireEvent(screen.getByTestId('player-menu-items'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 280, height: 120 } },
+    });
+  });
 }
 
 /** Sign in, then hand back the WebView showing the game. */
@@ -267,6 +279,31 @@ describe('PlayerScreen', () => {
       expect(screen.getByTestId('player-menu')).toBeOnTheScreen();
       expect(screen.getByText('Zelda')).toBeOnTheScreen();
       expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('takes focus off the game as it opens', async () => {
+      const { webview } = await renderPlayer('snes');
+      await signIn(webview);
+      await pressBack();
+
+      await layOutMenu();
+
+      // The WebView holds Android focus while the game runs, so the menu has
+      // to ask for it — `autoFocus` alone never fires.
+      expect(mockedRequestTVFocus).toHaveBeenCalled();
+    });
+
+    it('keeps focus while the page reports the canvas behind it', async () => {
+      const { webview } = await renderPlayer('snes');
+      const player = await signIn(webview);
+      await pressBack();
+      const { requestFocus } = player.props.imperativeHandle;
+      requestFocus.mockClear();
+
+      await fireEvent(player, 'message', loginMessage({ type: 'canvas' }));
+
+      expect(requestFocus).not.toHaveBeenCalled();
+      expect(screen.getByTestId('player-menu')).toBeOnTheScreen();
     });
 
     it('closes again on a second Back', async () => {

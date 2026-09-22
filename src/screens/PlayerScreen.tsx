@@ -2,6 +2,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FocusGuideMethods,
   StyleSheet,
   Text,
   TVFocusGuideView,
@@ -16,6 +17,7 @@ import { getRom } from '../api/rommClient';
 import { useAuth } from '../auth/AuthContext';
 import { FocusablePressable } from '../components/FocusablePressable';
 import { HardwareKey, useHardwareKeys } from '../input/hardwareKeys';
+import { requestTVFocus } from '../input/tvFocus';
 import { RootStackParamList } from '../navigation/types';
 import {
   getInBrowserPlayEnabled,
@@ -301,8 +303,9 @@ export function PlayerScreen({ navigation, route }: Props) {
       return;
     }
     // The page has handed DOM focus to the game canvas; give the WebView
-    // itself Android focus so key presses reach it.
-    if (payload.type === 'canvas' && step === 'ready') {
+    // itself Android focus so key presses reach it — unless the menu is up,
+    // which owns focus until it closes.
+    if (payload.type === 'canvas' && step === 'ready' && !menuOpen) {
       focusWebView();
       return;
     }
@@ -396,15 +399,30 @@ interface PauseMenuProps {
 
 /**
  * Sits over the running game. `TVFocusGuideView` hands focus to the first
- * button as it appears — without that, focus would still be on the WebView and
- * the D-pad would drive the game behind the menu — and traps it so arrow keys
- * can't wander back out.
+ * button and traps it so arrow keys can't wander back out to the game.
+ *
+ * Its `autoFocus` alone isn't enough to get focus here in the first place:
+ * that only fires when Android's focus search arrives at the guide, and
+ * nothing sends it there — the WebView holds focus while the game runs and
+ * keeps it when the menu appears, so the menu draws unfocused and the D-pad
+ * goes on driving the game behind it. The guide is therefore asked for focus
+ * outright as it lands, which is what passes it on to the first button.
  */
 function PauseMenu({ romName, onResume, onExit }: PauseMenuProps) {
+  const menuRef = useRef<View & FocusGuideMethods>(null);
+
+  // `onLayout` rather than an effect: Android ignores a focus request for a
+  // view that isn't attached to the window yet, and layout is the first point
+  // at which it is.
+  const takeFocus = useCallback(() => requestTVFocus(menuRef.current), []);
+
   return (
     <View style={styles.overlay} testID="player-menu">
       <Text style={styles.menuTitle}>{romName}</Text>
       <TVFocusGuideView
+        ref={menuRef}
+        onLayout={takeFocus}
+        testID="player-menu-items"
         autoFocus
         trapFocusUp
         trapFocusDown
@@ -412,7 +430,12 @@ function PauseMenu({ romName, onResume, onExit }: PauseMenuProps) {
         trapFocusRight
         style={styles.menu}
       >
+        {/* Focus lands here. `hasTVPreferredFocus` is what makes the button
+            focusable while the device is in touch mode — a TV that's been
+            poked with a mouse or a touchscreen — where a plain focusable view
+            can't be focused at all. */}
         <FocusablePressable
+          hasTVPreferredFocus
           style={styles.menuItem}
           onPress={onResume}
           testID="player-menu-resume"
