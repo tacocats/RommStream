@@ -5,13 +5,35 @@
 // every test in jest.setupAfterEnv.js.
 
 // WebView renders as a plain View that keeps its props, so tests can read
-// `source` / `injectedJavaScript` and fire `message` / `error` events.
+// `source` / `injectedJavaScript` and fire `message` / `error` events. The ref
+// exposes the imperative methods the real component has (per instance, so a
+// test can assert on e.g. requestFocus calls).
 jest.mock('react-native-webview', () => {
   const React = require('react');
   const { View } = require('react-native');
-  const WebView = React.forwardRef((props, ref) =>
-    React.createElement(View, { testID: 'webview', ...props, ref }),
-  );
+  const WebView = React.forwardRef((props, ref) => {
+    const handle = React.useRef(null);
+    if (!handle.current) {
+      handle.current = {
+        requestFocus: jest.fn(),
+        injectJavaScript: jest.fn(),
+        postMessage: jest.fn(),
+        reload: jest.fn(),
+        stopLoading: jest.fn(),
+        goBack: jest.fn(),
+        goForward: jest.fn(),
+        clearCache: jest.fn(),
+      };
+    }
+    React.useImperativeHandle(ref, () => handle.current, []);
+    // Also hung off the rendered element so a test holding the WebView can
+    // assert on imperative calls (e.g. requestFocus) without a ref of its own.
+    return React.createElement(View, {
+      testID: 'webview',
+      ...props,
+      imperativeHandle: handle.current,
+    });
+  });
   WebView.displayName = 'WebView';
   return { __esModule: true, WebView, default: WebView };
 });

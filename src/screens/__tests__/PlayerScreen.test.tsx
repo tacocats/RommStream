@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
+import { DeviceEventEmitter } from 'react-native';
 import {
   getConfig,
   getHeartbeat,
@@ -7,6 +8,7 @@ import {
   getStreamingConfig,
 } from '../../api/rommClient';
 import { useAuth } from '../../auth/AuthContext';
+import { requestTVFocus } from '../../input/tvFocus';
 import {
   setInBrowserPlayEnabled,
   setLoginPath,
@@ -17,8 +19,10 @@ import { PlayerScreen } from '../PlayerScreen';
 
 jest.mock('../../auth/AuthContext');
 jest.mock('../../api/rommClient');
+jest.mock('../../input/tvFocus');
 
 const mockedUseAuth = jest.mocked(useAuth);
+const mockedRequestTVFocus = jest.mocked(requestTVFocus);
 const mockedGetRom = jest.mocked(getRom);
 const mockedGetHeartbeat = jest.mocked(getHeartbeat);
 const mockedGetConfig = jest.mocked(getConfig);
@@ -28,6 +32,16 @@ const SERVER = 'https://romm.test';
 
 function loginMessage(payload: unknown) {
   return { nativeEvent: { data: JSON.stringify(payload) } };
+}
+
+/** What the native key interceptor sends when the remote's Back is pressed. */
+async function pressBack() {
+  await act(async () => {
+    DeviceEventEmitter.emit('rommstream.hardwareKey', {
+      key: 'back',
+      keyCode: 4,
+    });
+  });
 }
 
 async function renderPlayer(platformSlug = 'snes', { romFails = false } = {}) {
@@ -50,6 +64,15 @@ async function renderPlayer(platformSlug = 'snes', { romFails = false } = {}) {
   await render(<PlayerScreen {...screenProps.props} />);
   const webview = await screen.findByTestId('player-webview');
   return { ...screenProps, webview };
+}
+
+/** The menu's focus container reaching the screen, which is what takes focus. */
+async function layOutMenu() {
+  await act(async () => {
+    fireEvent(screen.getByTestId('player-menu-items'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 280, height: 120 } },
+    });
+  });
 }
 
 /** Sign in, then hand back the WebView showing the game. */
@@ -223,6 +246,119 @@ describe('PlayerScreen', () => {
     expect(screen.getByTestId('player-error')).toHaveTextContent(
       'Sign-in request failed: TypeError: Failed to fetch',
     );
+  });
+
+  it('focuses the game surface once the play button is pressed', async () => {
+    const { webview } = await renderPlayer('snes');
+
+    const script = (await signIn(webview)).props.injectedJavaScript;
+
+    expect(script).toContain('focusGameSurface');
+    expect(script).toContain('pointerdown');
+    expect(script).toContain("post({ type: 'canvas' })");
+  });
+
+  it('takes Android focus when the page reports the canvas is focused', async () => {
+    const { webview } = await renderPlayer('snes');
+    const player = await signIn(webview);
+    const { requestFocus } = player.props.imperativeHandle;
+    requestFocus.mockClear();
+
+    await fireEvent(player, 'message', loginMessage({ type: 'canvas' }));
+
+    expect(requestFocus).toHaveBeenCalled();
+  });
+
+  describe('pause menu', () => {
+    it('opens on Back instead of leaving the game', async () => {
+      const { webview, navigation } = await renderPlayer('snes');
+      await signIn(webview);
+
+      await pressBack();
+
+      expect(screen.getByTestId('player-menu')).toBeOnTheScreen();
+      expect(screen.getByText('Zelda')).toBeOnTheScreen();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('takes focus off the game as it opens', async () => {
+      const { webview } = await renderPlayer('snes');
+      await signIn(webview);
+      await pressBack();
+
+      await layOutMenu();
+
+      // The WebView holds Android focus while the game runs, so the menu has
+      // to ask for it — `autoFocus` alone never fires.
+      expect(mockedRequestTVFocus).toHaveBeenCalled();
+    });
+
+    it('keeps focus while the page reports the canvas behind it', async () => {
+      const { webview } = await renderPlayer('snes');
+      const player = await signIn(webview);
+      await pressBack();
+      const { requestFocus } = player.props.imperativeHandle;
+      requestFocus.mockClear();
+
+      await fireEvent(player, 'message', loginMessage({ type: 'canvas' }));
+
+      expect(requestFocus).not.toHaveBeenCalled();
+      expect(screen.getByTestId('player-menu')).toBeOnTheScreen();
+    });
+
+    it('closes again on a second Back', async () => {
+      const { webview } = await renderPlayer('snes');
+      await signIn(webview);
+
+      await pressBack();
+      await pressBack();
+
+      expect(screen.queryByTestId('player-menu')).toBeNull();
+    });
+
+    it('resumes the game and hands focus back to the WebView', async () => {
+      const { webview } = await renderPlayer('snes');
+      const player = await signIn(webview);
+      await pressBack();
+      const { requestFocus } = player.props.imperativeHandle;
+      requestFocus.mockClear();
+
+      await fireEvent.press(screen.getByTestId('player-menu-resume'));
+
+      expect(screen.queryByTestId('player-menu')).toBeNull();
+      expect(requestFocus).toHaveBeenCalled();
+    });
+
+    it('leaves the game from the exit item', async () => {
+      const { webview, navigation } = await renderPlayer('snes');
+      await signIn(webview);
+      await pressBack();
+
+      await fireEvent.press(screen.getByTestId('player-menu-exit'));
+
+      expect(navigation.goBack).toHaveBeenCalled();
+    });
+
+    it('is not armed while still signing in', async () => {
+      await renderPlayer('snes');
+
+      await pressBack();
+
+      expect(screen.queryByTestId('player-menu')).toBeNull();
+    });
+
+    it('is not armed once the player has failed', async () => {
+      const { webview } = await renderPlayer('snes');
+      const player = await signIn(webview);
+      await fireEvent(player, 'error', {
+        nativeEvent: { description: 'net::ERR_CONNECTION_REFUSED' },
+      });
+      expect(screen.getByTestId('player-error')).toBeOnTheScreen();
+
+      await pressBack();
+
+      expect(screen.queryByTestId('player-menu')).toBeNull();
+    });
   });
 
   it('shows WebView load errors', async () => {

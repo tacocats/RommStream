@@ -55,5 +55,10 @@
   },
   "engines": {
     "node": ">=22.13"
+  },
+  "codegenConfig": {
+    "name": "RommStreamAppSpec",
+    "type": "modules",
+    "jsSrcsDir": "src/native"
   }
 }

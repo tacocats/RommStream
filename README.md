@@ -1,4 +1,12 @@
-# RommStream
+<div align="center">
+
+<img src="docs/logo.svg" alt="RommStream" width="480" />
+
+[![Android Build](https://github.com/tacocats/RomMStream/actions/workflows/android-build.yml/badge.svg)](https://github.com/tacocats/RomMStream/actions/workflows/android-build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Android%20TV%20%7C%20tvOS-informational)](#)
+
+</div>
 
 > [!WARNING]
 > Requires RomM server 5.3.0-alpha
@@ -10,9 +18,6 @@ RomMStream is a React Native TV app for Android TV and Apple TV (tvOS) that sign
 platform, and launches the game in a WebView pointed at RomM's own web
 player.
 
-> [!NOTE]
-> Currently Makes use of both of Romms 'In-browser Play' and 'Emulator Streaming' - In the future, `In-Browser Play` can be disabled
-
 Depending on the ROM, it will automatically launch into either:
 
 - In-Browser Play
@@ -22,6 +27,25 @@ Depending on the ROM, it will automatically launch into either:
   - [PICO-8](https://docs.romm.app/5.3.0-alpha/using/in-browser-play/pico-8/)
   - [Ruffle](https://docs.romm.app/5.3.0-alpha/using/in-browser-play/ruffle/)
 - [Emulator Streaming](https://docs.romm.app/5.3.0-alpha/using/emulator-streaming/)
+
+## Table of Contents
+
+- [Demo](#demo)
+- [Screenshots](#screenshots)
+- [Developers](#developers)
+  - [Prerequisites](#prerequisites)
+  - [Running it](#running-it)
+  - [Testing](#testing)
+  - [Project layout](#project-layout)
+  - [Notes on HTTP-only RomM servers](#notes-on-http-only-romm-servers)
+- [License](#license)
+
+## Demo
+
+<!-- TODO: record a short clip (browsing → launching a game → in-stream) and drop it at docs/demo.gif -->
+<div align="center">
+  <img src="docs/demo.gif" alt="Demo: browsing the library and launching a game" width="600" />
+</div>
 
 ## Screenshots
 
