@@ -2,31 +2,22 @@
 
 <img src="docs/logo.svg" alt="RommStream" width="480" />
 
+### Stream your games on your TV like you would Movies on Plex/Jellyfin!
+
+---
+
 [![Android Build](https://github.com/tacocats/RomMStream/actions/workflows/android-build.yml/badge.svg)](https://github.com/tacocats/RomMStream/actions/workflows/android-build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Android%20TV%20%7C%20tvOS-informational)](#)
 
+---
+
 </div>
-
-> [!WARNING]
-> Requires RomM server 5.3.0-alpha
-
-Stream your games on your TV like you would Movies on Plex/Jellyfin!
 
 RomMStream is a React Native TV app for Android TV and Apple TV (tvOS) that signs in to a
 [RomM](https://github.com/rommapp/romm) server, browses your library by
 platform, and launches the game in a WebView pointed at RomM's own web
 player.
-
-Depending on the ROM, it will automatically launch into either:
-
-- In-Browser Play
-  - [Emulatorjs](https://docs.romm.app/5.3.0-alpha/using/in-browser-play/emulatorjs/)
-  - [js-dos](https://docs.romm.app/5.3.0-alpha/using/in-browser-play/js-dos/)
-  - [MS-DOS](https://docs.romm.app/5.3.0-alpha/using/in-browser-play/ms-dos/)
-  - [PICO-8](https://docs.romm.app/5.3.0-alpha/using/in-browser-play/pico-8/)
-  - [Ruffle](https://docs.romm.app/5.3.0-alpha/using/in-browser-play/ruffle/)
-- [Emulator Streaming](https://docs.romm.app/5.3.0-alpha/using/emulator-streaming/)
 
 ## Table of Contents
 
