@@ -57,11 +57,6 @@ export function gameDetailsParamsFor(
   return romRouteParams(rom);
 }
 
-/** Route params for opening a rom directly in the web player. */
-export function playerParamsFor(rom: RommRom): RootStackParamList['Player'] {
-  return romRouteParams(rom);
-}
-
 export { resolveCoverUrl };
 
 const styles = StyleSheet.create({

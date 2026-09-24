@@ -47,11 +47,17 @@ export function MainScreen({ navigation }: Props) {
   const contentNavigation: ContentNavigation = useMemo(
     () => ({
       navigate: (
-        screen: 'Roms' | 'GameDetails' | 'Player' | 'Settings',
+        screen:
+          | 'Roms'
+          | 'GameDetails'
+          | 'EmulatorPlayer'
+          | 'GameStreamPlayer'
+          | 'Settings',
         params?:
           | RootStackParamList['Roms']
           | RootStackParamList['GameDetails']
-          | RootStackParamList['Player'],
+          | RootStackParamList['EmulatorPlayer']
+          | RootStackParamList['GameStreamPlayer'],
       ) => {
         if (screen === 'Roms') {
           setStack(s => [
@@ -66,8 +72,16 @@ export function MainScreen({ navigation }: Props) {
               params: params as RootStackParamList['GameDetails'],
             },
           ]);
-        } else if (screen === 'Player') {
-          navigation.navigate('Player', params as RootStackParamList['Player']);
+        } else if (screen === 'EmulatorPlayer') {
+          navigation.navigate(
+            'EmulatorPlayer',
+            params as RootStackParamList['EmulatorPlayer'],
+          );
+        } else if (screen === 'GameStreamPlayer') {
+          navigation.navigate(
+            'GameStreamPlayer',
+            params as RootStackParamList['GameStreamPlayer'],
+          );
         } else {
           navigation.navigate('Settings');
         }

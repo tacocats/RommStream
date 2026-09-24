@@ -13,7 +13,6 @@ import { useAuth } from '../auth/AuthContext';
 import { CoverPlaceholder } from '../components/CoverPlaceholder';
 import { FocusablePressable } from '../components/FocusablePressable';
 import { PlayIcon, VerifiedIcon } from '../components/icons';
-import { playerParamsFor } from '../components/RomGrid';
 import { platformLabelFor, resolveCoverUrl } from '../components/RomTile';
 import { ContentNavigation, RootStackParamList } from '../navigation/types';
 import { getInBrowserPlayEnabled } from '../settings/settingsStore';
@@ -63,7 +62,12 @@ export function GameDetailsScreen({ route, navigation }: Props) {
   const [rom, setRom] = useState<RommRomDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [playable, setPlayable] = useState<boolean | null>(null);
+  // undefined: not resolved yet (Play still shows, per the comment below).
+  // null: resolved, and nothing can launch this rom.
+  // string: the resolved play route, e.g. "/rom/5/ejs" or "/rom/5/stream".
+  const [playPath, setPlayPath] = useState<string | null | undefined>(
+    undefined,
+  );
   const [inBrowserPlayEnabled, setInBrowserPlayEnabled] = useState(true);
 
   const load = useCallback(async () => {
@@ -81,7 +85,7 @@ export function GameDetailsScreen({ route, navigation }: Props) {
         enabled,
       );
       setInBrowserPlayEnabled(enabled);
-      setPlayable(path !== null);
+      setPlayPath(path);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load game');
     } finally {
@@ -94,11 +98,17 @@ export function GameDetailsScreen({ route, navigation }: Props) {
     load();
   }, [load, navigation, romName]);
 
+  // RomM's own rom page is the floor when nothing has resolved yet (e.g. the
+  // rom detail fetch is still in flight): it can't play the game itself, but
+  // its own UI is there to try.
   const play = () => {
-    navigation.navigate(
-      'Player',
-      rom ? playerParamsFor(rom) : { romId, romName, platformSlug },
-    );
+    const path = playPath ?? `/rom/${romId}`;
+    const params = { romId, romName, playUrl: `${serverUrl}${path}` };
+    if (path.endsWith('/stream')) {
+      navigation.navigate('GameStreamPlayer', params);
+    } else {
+      navigation.navigate('EmulatorPlayer', params);
+    }
   };
 
   const metadatum = rom?.metadatum;
@@ -151,7 +161,7 @@ export function GameDetailsScreen({ route, navigation }: Props) {
               </View>
             )}
 
-            {playable === false ? (
+            {playPath === null ? (
               <View style={styles.noPlayer} testID="no-player-notice">
                 <Text style={styles.noPlayerTitle}>No player available</Text>
                 <Text style={styles.noPlayerText}>

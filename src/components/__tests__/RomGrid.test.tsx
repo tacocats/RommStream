@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
-import { playerParamsFor, resolveCoverUrl, RomGrid } from '../RomGrid';
+import { resolveCoverUrl, RomGrid } from '../RomGrid';
 
 const ROMS = [
   {
@@ -85,20 +85,5 @@ describe('resolveCoverUrl', () => {
     expect(resolveCoverUrl('https://romm.test', 'http://cdn/x.png')).toBe(
       'http://cdn/x.png',
     );
-  });
-});
-
-describe('playerParamsFor', () => {
-  it('maps a rom to Player route params, defaulting the platform slug', () => {
-    expect(playerParamsFor(ROMS[0])).toEqual({
-      romId: 1,
-      romName: 'Zelda',
-      platformSlug: 'snes',
-    });
-    expect(playerParamsFor(ROMS[2])).toEqual({
-      romId: 3,
-      romName: 'Metroid',
-      platformSlug: '',
-    });
   });
 });

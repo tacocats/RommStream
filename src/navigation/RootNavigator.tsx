@@ -4,7 +4,8 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { LoginScreen } from '../screens/LoginScreen';
 import { MainScreen } from '../screens/MainScreen';
-import { PlayerScreen } from '../screens/PlayerScreen';
+import { EmulatorPlayerScreen } from '../screens/player/EmulatorPlayerScreen';
+import { GameStreamPlayerScreen } from '../screens/player/GameStreamPlayerScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { colors } from '../theme/colors';
 import { RootStackParamList } from './types';
@@ -44,8 +45,13 @@ export function RootNavigator() {
             options={{ headerShown: false }}
           />
           <Stack.Screen
-            name="Player"
-            component={PlayerScreen}
+            name="EmulatorPlayer"
+            component={EmulatorPlayerScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="GameStreamPlayer"
+            component={GameStreamPlayerScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen name="Settings" component={SettingsScreen} />

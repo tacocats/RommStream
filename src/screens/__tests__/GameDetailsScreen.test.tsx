@@ -127,31 +127,49 @@ describe('GameDetailsScreen', () => {
     expect(screen.queryByTestId('game-details-cover')).toBeNull();
   });
 
-  it('launches the player with the Play button', async () => {
+  it('launches the emulator player with the Play button', async () => {
     mockedGetRom.mockResolvedValueOnce(ROM);
     const { navigation, rendered } = renderScreen();
     await rendered;
 
     await fireEvent.press(await screen.findByTestId('play-button'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('Player', {
+    expect(navigation.navigate).toHaveBeenCalledWith('EmulatorPlayer', {
       romId: 5,
       romName: "Tony Hawk's Pro Skater 2",
-      platformSlug: 'psx',
+      playUrl: 'https://romm.test/rom/5/ejs',
     });
   });
 
-  it('can launch the player from the route params while the detail fetch is still pending', async () => {
+  it('launches the stream player when that is what resolved', async () => {
+    mockedGetStreamingConfig.mockResolvedValue({
+      enabled: true,
+      containers: [{ platform: 'psx', container: 'romm-psx' }],
+    });
+    mockedGetRom.mockResolvedValueOnce(ROM);
+    const { navigation, rendered } = renderScreen();
+    await rendered;
+
+    await fireEvent.press(await screen.findByTestId('play-button'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('GameStreamPlayer', {
+      romId: 5,
+      romName: "Tony Hawk's Pro Skater 2",
+      playUrl: 'https://romm.test/rom/5/stream',
+    });
+  });
+
+  it('falls back to the plain rom page while the detail fetch is still pending', async () => {
     mockedGetRom.mockReturnValueOnce(new Promise(() => {}));
     const { navigation, rendered } = renderScreen();
     await rendered;
 
     await fireEvent.press(screen.getByTestId('play-button'));
 
-    expect(navigation.navigate).toHaveBeenCalledWith('Player', {
+    expect(navigation.navigate).toHaveBeenCalledWith('EmulatorPlayer', {
       romId: 5,
       romName: "Tony Hawk's Pro Skater 2",
-      platformSlug: 'psx',
+      playUrl: 'https://romm.test/rom/5',
     });
   });
 
