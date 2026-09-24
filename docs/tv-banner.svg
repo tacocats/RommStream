@@ -1,0 +1,34 @@
+<svg width="640" height="360" viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="RommStream">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4338CA" />
+      <stop offset="100%" stop-color="#0EA5E9" />
+    </linearGradient>
+  </defs>
+
+  <rect width="640" height="360" fill="url(#bg)" />
+
+  <!-- signal waves streaming from the TV -->
+  <g fill="none" stroke="#FFFFFF" stroke-linecap="round" opacity="0.55">
+    <path d="M 205 108 Q 230 94 244 108" stroke-width="7" />
+    <path d="M 195 98 Q 230 70 260 98" stroke-width="7" />
+  </g>
+
+  <!-- TV -->
+  <g>
+    <rect x="76" y="104" width="168" height="112" rx="12" fill="none" stroke="#FFFFFF" stroke-width="11" />
+    <path d="M 138 138 L 182 160 L 138 182 Z" fill="#FDE68A" />
+    <rect x="141" y="230" width="28" height="16" fill="#FFFFFF" />
+    <rect x="113" y="246" width="84" height="11" rx="5.5" fill="#FFFFFF" />
+  </g>
+
+  <text
+    x="268"
+    y="188"
+    font-family="Liberation Sans, DejaVu Sans, sans-serif"
+    font-size="50"
+    font-weight="bold"
+  >
+    <tspan fill="#FFFFFF">Romm</tspan><tspan fill="#FDE68A">Stream</tspan>
+  </text>
+</svg>

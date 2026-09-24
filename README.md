@@ -7,6 +7,7 @@
 ---
 
 [![Android Build](https://github.com/tacocats/RomMStream/actions/workflows/android-build.yml/badge.svg)](https://github.com/tacocats/RomMStream/actions/workflows/android-build.yml)
+[![Website](https://github.com/tacocats/RomMStream/actions/workflows/website-deploy.yml/badge.svg)](https://tacocats.github.io/RomMStream/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Android%20TV%20%7C%20tvOS-informational)](#)
 

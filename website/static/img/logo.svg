@@ -1,0 +1,29 @@
+<svg width="560" height="130" viewBox="0 0 560 130" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="RommStream">
+  <title>RommStream</title>
+  <defs>
+    <linearGradient id="rms-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4338CA" />
+      <stop offset="100%" stop-color="#0EA5E9" />
+    </linearGradient>
+  </defs>
+
+  <rect width="560" height="130" rx="22" fill="url(#rms-bg)" />
+
+  <!-- TV / stream icon -->
+  <g transform="translate(30,35)">
+    <rect x="0" y="0" width="60" height="42" rx="6" fill="none" stroke="#FFFFFF" stroke-width="5" />
+    <path d="M17 13 L33 21 L17 29 Z" fill="#FFFFFF" />
+    <rect x="20" y="46" width="20" height="6" rx="3" fill="#FFFFFF" />
+  </g>
+
+  <text
+    x="118"
+    y="82"
+    font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif"
+    font-size="52"
+    font-weight="800"
+    letter-spacing="-1"
+  >
+    <tspan fill="#FFFFFF">Romm</tspan><tspan fill="#FDE68A">Stream</tspan>
+  </text>
+</svg>

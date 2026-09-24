@@ -1,0 +1,37 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* Brand palette: matches the logo/icon gradient (indigo -> sky) and the
+   yellow accent used for the "Stream" wordmark and play glyph. */
+:root {
+  --rms-indigo: #4338ca;
+  --rms-sky: #0ea5e9;
+  --rms-yellow: #fde68a;
+
+  --ifm-color-primary: #4338ca;
+  --ifm-color-primary-dark: #382fb0;
+  --ifm-color-primary-darker: #332a9f;
+  --ifm-color-primary-darkest: #28217b;
+  --ifm-color-primary-light: #5e54d2;
+  --ifm-color-primary-lighter: #6d64d6;
+  --ifm-color-primary-lightest: #8f89df;
+  --ifm-code-font-size: 95%;
+  --ifm-footer-background-color: #1e1b4b;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+/* For readability concerns, dark mode uses the lighter, sky-blue end of the
+   brand gradient rather than the deeper indigo. */
+[data-theme='dark'] {
+  --ifm-color-primary: #38bdf8;
+  --ifm-color-primary-dark: #16b2f7;
+  --ifm-color-primary-darker: #08a8ef;
+  --ifm-color-primary-darkest: #0789c3;
+  --ifm-color-primary-light: #5ac8f9;
+  --ifm-color-primary-lighter: #6ecffa;
+  --ifm-color-primary-lightest: #9bdefb;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
