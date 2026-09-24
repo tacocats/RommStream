@@ -5,3 +5,5 @@ coverage
 artifacts
 package-lock.json
 .bundle
+website/build
+website/.docusaurus
