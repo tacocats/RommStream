@@ -12,9 +12,17 @@ export function HomeIcon({ color, size = 18 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
-        d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-8.5Z"
+        d="M3 11.5 12 4l9 7.5"
         stroke={color}
         strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M5.5 10v10h4.5v-5.5h4V20h4.5V10"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </Svg>
@@ -25,13 +33,13 @@ export function GamepadIcon({ color, size = 18 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
-        d="M7 7h10a5 5 0 0 1 4.9 6l-.8 3.3a2 2 0 0 1-3.5.8L15.5 15h-7l-2.1 2.1a2 2 0 0 1-3.5-.8L2.1 13A5 5 0 0 1 7 7Z"
+        d="M6.5 8h11a4.5 4.5 0 0 1 4.4 5.4l-.9 4a2.5 2.5 0 0 1-4.2 1.2L14.5 16h-5l-2.3 2.6A2.5 2.5 0 0 1 3 17.4l-.9-4A4.5 4.5 0 0 1 6.5 8Z"
         stroke={color}
         strokeWidth={2}
         strokeLinejoin="round"
       />
       <Path
-        d="M8 10v4M6 12h4M16 11h.01M18 13h.01"
+        d="M8 10.5v3M6.5 12h3M15.5 11h.01M17.5 13h.01"
         stroke={color}
         strokeWidth={2}
         strokeLinecap="round"
@@ -91,15 +99,15 @@ export function SettingsIcon({ color, size = 18 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
+        d="M10.23 4.61 L10.75 2.08 L13.25 2.08 L13.77 4.61 L15.97 5.52 L18.13 4.10 L19.90 5.87 L18.48 8.03 L19.39 10.23 L21.92 10.75 L21.92 13.25 L19.39 13.77 L18.48 15.97 L19.90 18.13 L18.13 19.90 L15.97 18.48 L13.77 19.39 L13.25 21.92 L10.75 21.92 L10.23 19.39 L8.03 18.48 L5.87 19.90 L4.10 18.13 L5.52 15.97 L4.61 13.77 L2.08 13.25 L2.08 10.75 L4.61 10.23 L5.52 8.03 L4.10 5.87 L5.87 4.10 L8.03 5.52Z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+      <Path
         d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
         stroke={color}
         strokeWidth={2}
-      />
-      <Path
-        d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V20a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.04 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H10a1.7 1.7 0 0 0 1.04-1.56V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V10a1.7 1.7 0 0 0 1.56 1.04H20a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04Z"
-        stroke={color}
-        strokeWidth={1.5}
-        strokeLinejoin="round"
       />
     </Svg>
   );
