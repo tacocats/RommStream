@@ -4,6 +4,7 @@ import {
   screen,
   within,
 } from '@testing-library/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React from 'react';
 import { getPlatforms } from '../../api/rommClient';
 import { useAuth } from '../../auth/AuthContext';
@@ -35,7 +36,8 @@ function renderTab() {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await AsyncStorage.clear();
   mockedUseAuth.mockReturnValue(createAuthValue());
 });
 
@@ -96,5 +98,26 @@ describe('PlatformsTab', () => {
     expect(await screen.findByText('Game Boy')).toBeOnTheScreen();
     expect(screen.queryByText('Failed to fetch')).toBeNull();
     expect(mockedGetPlatforms).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the cached list at once and keeps it if the refresh fails', async () => {
+    mockedGetPlatforms.mockResolvedValueOnce([...PLATFORMS]);
+    const first = renderTab();
+    await first.rendered;
+    await screen.findByText('Super Nintendo');
+    await (await first.rendered).unmount();
+
+    mockedGetPlatforms.mockReturnValueOnce(new Promise(() => {}));
+    await renderTab().rendered;
+
+    expect(await screen.findByText('Super Nintendo')).toBeOnTheScreen();
+    expect(screen.queryByTestId('platforms-loading')).toBeNull();
+  });
+
+  it('shows the error when there is nothing cached and loading fails', async () => {
+    mockedGetPlatforms.mockRejectedValueOnce(new Error('boom'));
+    await renderTab().rendered;
+
+    expect(await screen.findByText('boom')).toBeOnTheScreen();
   });
 });
