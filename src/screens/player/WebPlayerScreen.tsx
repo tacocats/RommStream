@@ -1,23 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  FocusGuideMethods,
-  StyleSheet,
-  Text,
-  TVFocusGuideView,
-  View,
-} from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
   WebView as WebViewBase,
   WebViewMessageEvent,
   WebViewProps,
 } from 'react-native-webview';
 import { useAuth } from '../../auth/AuthContext';
-import { FocusablePressable } from '../../components/FocusablePressable';
 import { HardwareKey, useHardwareKeys } from '../../input/hardwareKeys';
-import { requestTVFocus } from '../../input/tvFocus';
 import { getLoginPath } from '../../settings/settingsStore';
 import { colors } from '../../theme/colors';
+import { createLogger } from '../../utils/logger';
+import { PlayerMenu, PlayerMenuAction } from './PlayerMenu';
 
 /**
  * react-native-webview forwards an imperative handle but declares itself as a
@@ -26,11 +19,14 @@ import { colors } from '../../theme/colors';
  */
 interface WebViewHandle {
   requestFocus(): void;
+  injectJavaScript(script: string): void;
 }
 
 const WebView = WebViewBase as unknown as React.ForwardRefExoticComponent<
   WebViewProps & React.RefAttributes<WebViewHandle>
 >;
+
+const log = createLogger('login');
 
 type Step = 'logging-in' | 'ready';
 
@@ -44,10 +40,11 @@ const MENU_KEYS: HardwareKey[] = ['back'];
 // login request has to originate from inside the WebView itself.
 const BOOTSTRAP_PATH = '/api/heartbeat';
 
-// RomM's session-login endpoint takes HTTP Basic credentials, and its CSRF
-// middleware skips the token check when an Authorization header is present,
-// so a plain fetch from the page is enough — no CSRF cookie dance required.
-// Android's WebView can't attach headers to a POST navigation, hence fetch.
+// RomM's session-login endpoint takes HTTP Basic credentials. Its CSRF
+// middleware sets a readable `romm_csrftoken` cookie on the bootstrap GET and
+// wants it echoed back in an `x-csrftoken` header on the POST, so the script
+// does that (some deployments reject the login without it). Android's WebView
+// can't attach headers to a POST navigation, hence fetch.
 function buildLoginScript(
   loginPath: string,
   username: string,
@@ -63,12 +60,27 @@ function buildLoginScript(
     password,
   )};
         var basic = btoa(unescape(encodeURIComponent(creds)));
+        var csrf = (document.cookie.match(/(?:^|;\\s*)romm_csrftoken=([^;]*)/) || [])[1];
+        var headers = { Authorization: 'Basic ' + basic };
+        if (csrf) { headers['x-csrftoken'] = decodeURIComponent(csrf); }
         fetch(${JSON.stringify(loginPath)}, {
           method: 'POST',
           credentials: 'include',
-          headers: { Authorization: 'Basic ' + basic },
+          headers: headers,
         })
-          .then(function (res) { post({ type: 'login', ok: res.ok, status: res.status }); })
+          .then(function (res) {
+            var headers = {};
+            res.headers.forEach(function (v, k) { headers[k] = v; });
+            return res.text().then(function (body) {
+              post({
+                type: 'login',
+                ok: res.ok,
+                status: res.status,
+                headers: headers,
+                body: body.slice(0, 500),
+              });
+            });
+          })
           .catch(function (err) { post({ type: 'login', ok: false, error: String(err) }); });
       } catch (err) {
         post({ type: 'login', ok: false, error: String(err) });
@@ -106,6 +118,12 @@ export interface WebPlayerScreenProps {
    * as their launch sequences do.
    */
   autoPlayScript: string;
+  /**
+   * Builds extra pause-menu items (after Resume, before Exit) given a way to
+   * inject JS into the already-loaded play page. Omit for the plain
+   * Resume/Exit menu.
+   */
+  menuActions?(send: (script: string) => void): PlayerMenuAction[];
   onExit(): void;
 }
 
@@ -121,6 +139,7 @@ export function WebPlayerScreen({
   romName,
   playUrl,
   autoPlayScript,
+  menuActions,
   onExit,
 }: WebPlayerScreenProps) {
   const { serverUrl, username, password } = useAuth();
@@ -139,6 +158,10 @@ export function WebPlayerScreen({
   // be taken back off the pause menu when that closes.
   const focusWebView = useCallback(() => {
     webviewRef.current?.requestFocus();
+  }, []);
+
+  const sendToPlayer = useCallback((script: string) => {
+    webviewRef.current?.injectJavaScript(script);
   }, []);
 
   const closeMenu = useCallback(() => {
@@ -168,6 +191,8 @@ export function WebPlayerScreen({
       ok?: boolean;
       status?: number;
       error?: string;
+      headers?: Record<string, string>;
+      body?: string;
     };
     try {
       payload = JSON.parse(event.nativeEvent.data);
@@ -185,13 +210,28 @@ export function WebPlayerScreen({
       return;
     }
     if (payload.ok) {
+      log.info(`sign-in ok (HTTP ${payload.status}) at ${loginPath}`);
       setStep('ready');
     } else {
+      log.error(
+        `sign-in failed at ${serverUrl}${loginPath}: status=${payload.status}`,
+        `error=${payload.error}`,
+        `headers=${JSON.stringify(payload.headers)}`,
+        `body=${payload.body}`,
+      );
       setLoadError(
         describeLoginFailure(payload.status, loginPath, payload.error),
       );
     }
   };
+
+  const extraActions = (menuActions?.(sendToPlayer) ?? []).map(action => ({
+    ...action,
+    onSelect: () => {
+      action.onSelect();
+      closeMenu();
+    },
+  }));
 
   if (!loginPath) {
     return (
@@ -239,6 +279,7 @@ export function WebPlayerScreen({
         }
         onMessage={handleMessage}
         onError={syntheticEvent => {
+          log.error('webview load error', syntheticEvent.nativeEvent);
           setLoadError(
             syntheticEvent.nativeEvent.description ||
               'Failed to load the web player',
@@ -253,72 +294,13 @@ export function WebPlayerScreen({
         mediaPlaybackRequiresUserAction={false}
       />
       {menuOpen && (
-        <PauseMenu romName={romName} onResume={closeMenu} onExit={onExit} />
+        <PlayerMenu
+          romName={romName}
+          onResume={closeMenu}
+          onExit={onExit}
+          extraActions={extraActions}
+        />
       )}
-    </View>
-  );
-}
-
-interface PauseMenuProps {
-  romName: string;
-  onResume(): void;
-  onExit(): void;
-}
-
-/**
- * Sits over the running game. `TVFocusGuideView` hands focus to the first
- * button and traps it so arrow keys can't wander back out to the game.
- *
- * Its `autoFocus` alone isn't enough to get focus here in the first place:
- * that only fires when Android's focus search arrives at the guide, and
- * nothing sends it there — the WebView holds focus while the game runs and
- * keeps it when the menu appears, so the menu draws unfocused and the D-pad
- * goes on driving the game behind it. The guide is therefore asked for focus
- * outright as it lands, which is what passes it on to the first button.
- */
-function PauseMenu({ romName, onResume, onExit }: PauseMenuProps) {
-  const menuRef = useRef<View & FocusGuideMethods>(null);
-
-  // `onLayout` rather than an effect: Android ignores a focus request for a
-  // view that isn't attached to the window yet, and layout is the first point
-  // at which it is.
-  const takeFocus = useCallback(() => requestTVFocus(menuRef.current), []);
-
-  return (
-    <View style={styles.overlay} testID="player-menu">
-      <Text style={styles.menuTitle}>{romName}</Text>
-      <TVFocusGuideView
-        ref={menuRef}
-        onLayout={takeFocus}
-        testID="player-menu-items"
-        autoFocus
-        trapFocusUp
-        trapFocusDown
-        trapFocusLeft
-        trapFocusRight
-        style={styles.menu}
-      >
-        {/* Focus lands here. `hasTVPreferredFocus` is what makes the button
-            focusable while the device is in touch mode — a TV that's been
-            poked with a mouse or a touchscreen — where a plain focusable view
-            can't be focused at all. */}
-        <FocusablePressable
-          hasTVPreferredFocus
-          style={styles.menuItem}
-          onPress={onResume}
-          testID="player-menu-resume"
-        >
-          <Text style={styles.menuItemText}>Resume</Text>
-        </FocusablePressable>
-        <FocusablePressable
-          style={styles.menuItem}
-          onPress={onExit}
-          testID="player-menu-exit"
-        >
-          <Text style={styles.menuItemText}>Exit game</Text>
-        </FocusablePressable>
-      </TVFocusGuideView>
-      <Text style={styles.menuHint}>Press Back again to resume</Text>
     </View>
   );
 }
@@ -345,15 +327,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   overlayText: { color: colors.textMuted, fontSize: 16 },
-  menuTitle: { color: colors.textPrimary, fontSize: 28, fontWeight: '600' },
-  menu: { gap: 12, minWidth: 280 },
-  menuItem: { paddingVertical: 14, paddingHorizontal: 24 },
-  menuItemText: {
-    color: colors.textPrimary,
-    fontSize: 18,
-    textAlign: 'center',
-  },
-  menuHint: { color: colors.textFaint, fontSize: 14 },
   error: {
     color: colors.danger,
     fontSize: 16,

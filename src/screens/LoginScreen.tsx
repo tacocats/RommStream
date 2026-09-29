@@ -12,6 +12,9 @@ import { useAuth } from '../auth/AuthContext';
 import { FocusablePressable } from '../components/FocusablePressable';
 import { ArrowRightIcon, LogoMarkIcon } from '../components/icons';
 import { colors } from '../theme/colors';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('login');
 
 export function LoginScreen() {
   const { signIn } = useAuth();
@@ -35,6 +38,7 @@ export function LoginScreen() {
     try {
       await signIn(serverUrl, username, password);
     } catch (e) {
+      log.error(`sign-in failed for ${serverUrl}`, e);
       setError(e instanceof Error ? e.message : 'Unable to sign in');
     } finally {
       setSubmitting(false);

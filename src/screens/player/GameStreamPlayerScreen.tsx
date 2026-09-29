@@ -1,6 +1,11 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React from 'react';
+import React, { useState } from 'react';
 import { RootStackParamList } from '../../navigation/types';
+import {
+  resolutionPresets,
+  selkiesCommands,
+  selkiesPostMessageScript,
+} from '../../player/selkies/commands';
 import { WebPlayerScreen } from './WebPlayerScreen';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'GameStreamPlayer'>;
@@ -148,6 +153,9 @@ const AUTO_PLAY_SCRIPT = `
 /** RomM's server-side streamed container player (`/rom/:id/stream`). */
 export function GameStreamPlayerScreen({ navigation, route }: Props) {
   const { romName, playUrl } = route.params;
+  // selkies-core defaults gamepad capture to enabled; tracked here purely to
+  // label the menu item with the action it's about to take.
+  const [gamepadEnabled, setGamepadEnabled] = useState(true);
 
   return (
     <WebPlayerScreen
@@ -155,6 +163,63 @@ export function GameStreamPlayerScreen({ navigation, route }: Props) {
       playUrl={playUrl}
       autoPlayScript={AUTO_PLAY_SCRIPT}
       onExit={navigation.goBack}
+      menuActions={send => [
+        {
+          id: 'selkies-fullscreen',
+          label: 'Fullscreen',
+          onSelect: () =>
+            send(selkiesPostMessageScript(selkiesCommands.requestFullscreen())),
+        },
+        {
+          id: 'selkies-aspect-widescreen',
+          label: 'Aspect Ratio: 16:9',
+          onSelect: () =>
+            send(
+              selkiesPostMessageScript(
+                selkiesCommands.setManualResolution(
+                  resolutionPresets.widescreen.width,
+                  resolutionPresets.widescreen.height,
+                ),
+              ),
+            ),
+        },
+        {
+          id: 'selkies-aspect-standard',
+          label: 'Aspect Ratio: 4:3',
+          onSelect: () =>
+            send(
+              selkiesPostMessageScript(
+                selkiesCommands.setManualResolution(
+                  resolutionPresets.standard.width,
+                  resolutionPresets.standard.height,
+                ),
+              ),
+            ),
+        },
+        {
+          id: 'selkies-aspect-reset',
+          label: 'Aspect Ratio: Fit Screen',
+          onSelect: () =>
+            send(
+              selkiesPostMessageScript(
+                selkiesCommands.resetResolutionToWindow(),
+              ),
+            ),
+        },
+        {
+          id: 'selkies-gamepad-capture',
+          label: gamepadEnabled
+            ? 'Disable Gamepad Capture'
+            : 'Enable Gamepad Capture',
+          onSelect: () => {
+            const next = !gamepadEnabled;
+            setGamepadEnabled(next);
+            send(
+              selkiesPostMessageScript(selkiesCommands.gamepadControl(next)),
+            );
+          },
+        },
+      ]}
     />
   );
 }

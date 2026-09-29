@@ -1,4 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('iconCache');
 
 export type ResolvedIcon =
   | { kind: 'svg'; xml: string }
@@ -117,7 +120,8 @@ async function probe(candidate: IconCandidate): Promise<ResolvedIcon | null> {
         : null;
     }
     return looksLikeMarkup(text) ? null : { kind: 'ico', url: candidate.url };
-  } catch {
+  } catch (e) {
+    log.debug(`icon probe failed for ${candidate.url}`, e);
     return null;
   }
 }
@@ -132,15 +136,16 @@ async function resolveUncached(
     if (stored) {
       return JSON.parse(stored) as ResolvedIcon;
     }
-  } catch {
+  } catch (e) {
+    log.warn('icon cache unreadable, probing instead', e);
     // Unreadable storage just means a fresh probe.
   }
 
   for (const candidate of candidates) {
     const resolved = await probe(candidate);
     if (resolved) {
-      AsyncStorage.setItem(storageKey, JSON.stringify(resolved)).catch(
-        () => undefined,
+      AsyncStorage.setItem(storageKey, JSON.stringify(resolved)).catch(e =>
+        log.warn('could not cache icon', e),
       );
       return resolved;
     }
@@ -174,7 +179,9 @@ export function invalidatePlatformIcon(
 ): void {
   const key = cacheKey(serverUrl, slugs);
   memory.delete(key);
-  AsyncStorage.removeItem(STORAGE_PREFIX + key).catch(() => undefined);
+  AsyncStorage.removeItem(STORAGE_PREFIX + key).catch(e =>
+    log.warn('could not evict cached icon', e),
+  );
 }
 
 /** Test hook: drop the in-memory cache. */

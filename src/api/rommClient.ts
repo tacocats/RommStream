@@ -1,3 +1,4 @@
+import { createLogger } from '../utils/logger';
 import { Config, Heartbeat, StreamingConfig } from '../utils/playPath';
 import {
   RommApiError,
@@ -10,6 +11,8 @@ import {
   RommVirtualCollection,
   TokenResponse,
 } from './types';
+
+const log = createLogger('api');
 
 // Read-only scopes are enough for browsing + launching the web player.
 const REQUESTED_SCOPES = 'me.read platforms.read roms.read collections.read';
@@ -33,6 +36,10 @@ async function parseJsonOrThrow(response: Response) {
     }
   }
   if (!response.ok) {
+    log.warn(
+      `HTTP ${response.status} from ${(response.url ?? '').split('?')[0]}`,
+      `body=${text.slice(0, 200)}`,
+    );
     const detail =
       body && typeof body === 'object' && 'detail' in body
         ? String((body as { detail: unknown }).detail)

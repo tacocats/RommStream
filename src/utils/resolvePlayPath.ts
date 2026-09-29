@@ -1,6 +1,9 @@
 import { getConfig, getHeartbeat, getStreamingConfig } from '../api/rommClient';
 import { RommRomDetail } from '../api/types';
 import { Heartbeat, playPath, Rom, StreamingConfig } from './playPath';
+import { createLogger } from './logger';
+
+const log = createLogger('playPath');
 
 /** The shape of AuthContext's `withAuth`, structurally. */
 type WithAuth = <T>(
@@ -44,13 +47,18 @@ export async function resolvePlayPath(
   }
 
   const [heartbeat, config, streaming] = await Promise.all([
-    withAuth((url, token) => getHeartbeat(url, token)).catch(
-      () => NOTHING_DISABLED,
-    ),
-    withAuth((url, token) => getConfig(url, token)).catch(() => undefined),
-    withAuth((url, token) => getStreamingConfig(url, token)).catch(
-      () => NO_STREAMING,
-    ),
+    withAuth((url, token) => getHeartbeat(url, token)).catch(e => {
+      log.warn('heartbeat failed, assuming nothing disabled', e);
+      return NOTHING_DISABLED;
+    }),
+    withAuth((url, token) => getConfig(url, token)).catch(e => {
+      log.warn('config fetch failed', e);
+      return undefined;
+    }),
+    withAuth((url, token) => getStreamingConfig(url, token)).catch(e => {
+      log.warn('streaming config fetch failed, assuming none', e);
+      return NO_STREAMING;
+    }),
   ]);
 
   return playPath(toPlayPathRom(rom, platformSlug), {

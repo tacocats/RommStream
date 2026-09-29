@@ -12,6 +12,7 @@ import {
   refreshAccessToken,
 } from '../api/rommClient';
 import { RommApiError } from '../api/types';
+import { createLogger } from '../utils/logger';
 import {
   clearAll,
   loadCredentials,
@@ -20,6 +21,8 @@ import {
   saveTokens,
   StoredCredentials,
 } from './secureStore';
+
+const log = createLogger('auth');
 
 type AuthStatus = 'loading' | 'signedOut' | 'signedIn';
 
@@ -124,10 +127,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           error.status === 401 &&
           state.refreshToken
         ) {
-          const refreshed = await refreshAccessToken(
-            state.serverUrl,
-            state.refreshToken,
-          );
+          log.info('access token expired, refreshing');
+          let refreshed;
+          try {
+            refreshed = await refreshAccessToken(
+              state.serverUrl,
+              state.refreshToken,
+            );
+          } catch (refreshError) {
+            log.error('token refresh failed', refreshError);
+            throw refreshError;
+          }
           await saveTokens({
             accessToken: refreshed.access_token,
             refreshToken: refreshed.refresh_token,

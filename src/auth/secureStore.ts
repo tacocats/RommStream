@@ -1,4 +1,7 @@
 import * as Keychain from 'react-native-keychain';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('secureStore');
 
 // Two separate keychain entries: one for the RomM credentials (needed again
 // later to authenticate the WebView session), one for the current tokens.
@@ -31,7 +34,8 @@ export async function loadCredentials(): Promise<StoredCredentials | null> {
   }
   try {
     return JSON.parse(result.password) as StoredCredentials;
-  } catch {
+  } catch (e) {
+    log.warn('stored value is not valid JSON, ignoring it', e);
     return null;
   }
 }
@@ -49,7 +53,8 @@ export async function loadTokens(): Promise<StoredTokens | null> {
   }
   try {
     return JSON.parse(result.password) as StoredTokens;
-  } catch {
+  } catch (e) {
+    log.warn('stored value is not valid JSON, ignoring it', e);
     return null;
   }
 }

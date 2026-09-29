@@ -5,6 +5,7 @@ import { useAuth } from '../../../auth/AuthContext';
 import { requestTVFocus } from '../../../input/tvFocus';
 import { setLoginPath } from '../../../settings/settingsStore';
 import { createAuthValue } from '../../../testUtils/mockAuth';
+import { PlayerMenuAction } from '../PlayerMenu';
 import { WebPlayerScreen } from '../WebPlayerScreen';
 
 jest.mock('../../../auth/AuthContext');
@@ -31,13 +32,17 @@ async function pressBack() {
   });
 }
 
-async function renderPlayer(onExit = jest.fn()) {
+async function renderPlayer(
+  onExit = jest.fn(),
+  menuActions?: (send: (script: string) => void) => PlayerMenuAction[],
+) {
   await render(
     <WebPlayerScreen
       romName="Zelda"
       playUrl={PLAY_URL}
       autoPlayScript={AUTO_PLAY_SCRIPT}
       onExit={onExit}
+      menuActions={menuActions}
     />,
   );
   const webview = await screen.findByTestId('player-webview');
@@ -253,6 +258,45 @@ describe('WebPlayerScreen', () => {
       await pressBack();
 
       expect(screen.queryByTestId('player-menu')).toBeNull();
+    });
+  });
+
+  describe('extra menu actions', () => {
+    it('renders none by default', async () => {
+      const { webview } = await renderPlayer();
+      await signIn(webview);
+      await pressBack();
+
+      expect(screen.queryByTestId('player-menu-action-test-action')).toBeNull();
+    });
+
+    it('runs a supplied action and closes the menu', async () => {
+      const onSelect = jest.fn();
+      const { webview } = await renderPlayer(jest.fn(), send => [
+        {
+          id: 'test-action',
+          label: 'Test Action',
+          onSelect: () => onSelect(send),
+        },
+      ]);
+      const player = await signIn(webview);
+      await pressBack();
+      const { requestFocus, injectJavaScript } = player.props.imperativeHandle;
+      requestFocus.mockClear();
+
+      expect(screen.getByText('Test Action')).toBeOnTheScreen();
+      await fireEvent.press(
+        screen.getByTestId('player-menu-action-test-action'),
+      );
+
+      expect(onSelect).toHaveBeenCalledWith(expect.any(Function));
+      expect(screen.queryByTestId('player-menu')).toBeNull();
+      expect(requestFocus).toHaveBeenCalled();
+
+      // The `send` handed to the builder injects into this WebView instance.
+      const send = onSelect.mock.calls[0][0];
+      send('SOME_SCRIPT');
+      expect(injectJavaScript).toHaveBeenCalledWith('SOME_SCRIPT');
     });
   });
 
