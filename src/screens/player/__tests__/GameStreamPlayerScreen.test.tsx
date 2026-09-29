@@ -118,7 +118,7 @@ describe('GameStreamPlayerScreen', () => {
 
     const { injectJavaScript } = player.props.imperativeHandle;
     expect(injectJavaScript).toHaveBeenCalledWith(
-      expect.stringContaining('window.postMessage'),
+      expect.stringContaining('postMessage'),
     );
     expect(injectJavaScript).toHaveBeenCalledWith(
       expect.stringContaining('"type":"requestFullscreen"'),

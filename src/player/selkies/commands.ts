@@ -23,15 +23,19 @@ export interface SelkiesCommand {
 }
 
 /**
- * Builds a script safe to hand to the WebView's `injectJavaScript`: posts
- * `command` to the page's own window at the page's own origin (rather than
- * `'*'`, since sender and recipient are the same origin here).
+ * Builds a script safe to hand to the WebView's `injectJavaScript`. selkies-core
+ * drops any message whose origin isn't its own, so this must run on the
+ * streaming page (see GAME_STREAM_FRAME_SCRIPT) and posts to the nested
+ * `#session-frame` core, which shares that page's origin. Falls back to the
+ * page's own window when the core is the top-level page.
  */
 export function selkiesPostMessageScript(command: SelkiesCommand): string {
   return `
     (function () {
       try {
-        window.postMessage(${JSON.stringify(command)}, window.location.origin);
+        var frame = document.getElementById('session-frame');
+        var target = (frame && frame.contentWindow) || window;
+        target.postMessage(${JSON.stringify(command)}, window.location.origin);
       } catch (e) {}
     })();
     true;

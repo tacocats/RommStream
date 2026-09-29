@@ -5,10 +5,10 @@ import {
 } from '../commands';
 
 describe('selkiesPostMessageScript', () => {
-  it('builds a script that posts the command to the page itself', () => {
+  it('builds a script that posts the command to the session frame, falling back to the page', () => {
     const script = selkiesPostMessageScript({ type: 'requestFullscreen' });
 
-    expect(script).toContain('window.postMessage(');
+    expect(script).toContain('postMessage(');
     expect(script).toContain('"type":"requestFullscreen"');
     expect(script).toContain('window.location.origin');
   });

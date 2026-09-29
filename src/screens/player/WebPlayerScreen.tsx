@@ -119,6 +119,13 @@ export interface WebPlayerScreenProps {
    */
   autoPlayScript: string;
   /**
+   * For players whose stream lives in a cross-origin iframe inside the play
+   * page: when `autoPlayScript` posts `{type: 'streamFrame', src}`, the
+   * WebView navigates to that URL and runs this script there instead. Being
+   * top-level on the frame's own origin is what lets menu commands reach it.
+   */
+  frameScript?: string;
+  /**
    * Builds extra pause-menu items (after Resume, before Exit) given a way to
    * inject JS into the already-loaded play page. Omit for the plain
    * Resume/Exit menu.
@@ -139,6 +146,7 @@ export function WebPlayerScreen({
   romName,
   playUrl,
   autoPlayScript,
+  frameScript,
   menuActions,
   onExit,
 }: WebPlayerScreenProps) {
@@ -148,6 +156,7 @@ export function WebPlayerScreen({
   const [step, setStep] = useState<Step>('logging-in');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [frameUrl, setFrameUrl] = useState<string | null>(null);
 
   useEffect(() => {
     getLoginPath().then(setLoginPath);
@@ -188,6 +197,7 @@ export function WebPlayerScreen({
     }
     let payload: {
       type?: string;
+      src?: string;
       ok?: boolean;
       status?: number;
       error?: string;
@@ -204,6 +214,16 @@ export function WebPlayerScreen({
     // which owns focus until it closes.
     if (payload.type === 'canvas' && step === 'ready' && !menuOpen) {
       focusWebView();
+      return;
+    }
+    if (
+      payload.type === 'streamFrame' &&
+      frameScript &&
+      step === 'ready' &&
+      payload.src
+    ) {
+      log.info(`switching to stream frame ${payload.src.split('?')[0]}`);
+      setFrameUrl(payload.src);
       return;
     }
     if (payload.type !== 'login' || step !== 'logging-in') {
@@ -264,17 +284,21 @@ export function WebPlayerScreen({
           re-run the login script. The session cookie survives: the cookie
           store is shared across WebView instances on both platforms. */}
       <WebView
-        key={step}
+        key={`${step}:${frameUrl ?? ''}`}
         ref={webviewRef}
         testID="player-webview"
         style={styles.webview}
         source={{
           uri:
-            step === 'logging-in' ? `${serverUrl}${BOOTSTRAP_PATH}` : playUrl,
+            step === 'logging-in'
+              ? `${serverUrl}${BOOTSTRAP_PATH}`
+              : frameUrl ?? playUrl,
         }}
         injectedJavaScript={
           step === 'logging-in'
             ? buildLoginScript(loginPath, username, password)
+            : frameUrl && frameScript
+            ? frameScript
             : autoPlayScript
         }
         onMessage={handleMessage}

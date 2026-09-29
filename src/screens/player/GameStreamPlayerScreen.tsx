@@ -123,6 +123,23 @@ const AUTO_PLAY_SCRIPT = `
       }, 200);
     };
 
+    // The stream itself runs in a cross-origin iframe, out of reach of both
+    // this script and the menu commands (selkies-core ignores messages from
+    // other origins). Hand its URL to the native side, which loads it as the
+    // top-level page.
+    var handOffStreamFrame = function () {
+      var tries = 0;
+      var timer = setInterval(function () {
+        var frame = document.querySelector('iframe[src]');
+        if (frame && frame.src) {
+          clearInterval(timer);
+          post({ type: 'streamFrame', src: frame.src });
+        } else if (++tries > 300) {
+          clearInterval(timer);
+        }
+      }, 200);
+    };
+
     var findPlayButton = function () {
       var byClass = document.querySelector('button.play-button, button.r-v2-ejs__play');
       if (byClass) { return byClass; }
@@ -142,6 +159,33 @@ const AUTO_PLAY_SCRIPT = `
         disableTouchGamepad();
         dismissNewVersionToast();
         focusGameSurface();
+        handOffStreamFrame();
+      } else if (++tries > 150) {
+        clearInterval(timer);
+      }
+    }, 200);
+  })();
+  true;
+`;
+
+// Runs on the streaming page once it is the top-level document: it wraps the
+// actual selkies-core in #session-frame (same origin). Key presses go to
+// whichever element has focus, so put it on the core and tell native to give
+// the WebView Android focus.
+const STREAM_FRAME_SCRIPT = `
+  (function () {
+    var tries = 0;
+    var timer = setInterval(function () {
+      var frame = document.getElementById('session-frame');
+      if (frame && frame.contentWindow) {
+        try {
+          frame.focus();
+          frame.contentWindow.focus();
+        } catch (e) {}
+        if (++tries === 1) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'canvas' }));
+        }
+        if (tries > 10) { clearInterval(timer); }
       } else if (++tries > 150) {
         clearInterval(timer);
       }
@@ -162,6 +206,7 @@ export function GameStreamPlayerScreen({ navigation, route }: Props) {
       romName={romName}
       playUrl={playUrl}
       autoPlayScript={AUTO_PLAY_SCRIPT}
+      frameScript={STREAM_FRAME_SCRIPT}
       onExit={navigation.goBack}
       menuActions={send => [
         {
