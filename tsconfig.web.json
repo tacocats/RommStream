@@ -1,0 +1,17 @@
+{
+  // The web (Electron renderer) build, with the DOM typings. Shared code is
+  // typed against the native siblings of the `.web.*` files Vite swaps in;
+  // those keep the same API, and are checked here in their own right.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2023", "dom", "dom.iterable"]
+  },
+  "include": [
+    "App.tsx",
+    "web/**/*.ts",
+    "web/**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  "exclude": ["**/node_modules"]
+}

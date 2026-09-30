@@ -7,3 +7,5 @@ package-lock.json
 .bundle
 website/build
 website/.docusaurus
+dist
+release

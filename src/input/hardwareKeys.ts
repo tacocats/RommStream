@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { DeviceEventEmitter, EmitterSubscription } from 'react-native';
-import NativeKeyEvents from '../native/NativeKeyEvents';
+import * as keySource from './hardwareKeySource';
 
 /**
  * Remote/controller keys the app can take for itself before anything else
@@ -14,8 +13,10 @@ import NativeKeyEvents from '../native/NativeKeyEvents';
  * native code changes that. Volume is left out deliberately rather than
  * technically — swallowing it would just break the TV's volume.
  *
- * Android only. On every other platform the native module is absent and
- * everything below quietly does nothing.
+ * Android, and the Electron desktop build (hardwareKeySource.web.ts, fed by
+ * the keyboard, gamepads, and keys the main process takes off the game's
+ * webview). On tvOS the native module is absent and everything below quietly
+ * does nothing.
  */
 export type HardwareKey =
   | 'back'
@@ -63,18 +64,16 @@ export interface HardwareKeyEvent {
  */
 export type HardwareKeyHandler = (event: HardwareKeyEvent) => boolean | void;
 
-/** Must match `KeyEventBridge.EVENT_NAME` on the Android side. */
-const KEY_EVENT = 'rommstream.hardwareKey';
-
 interface Registration {
   keys: readonly HardwareKey[];
   handler: HardwareKeyHandler;
 }
 
 const registrations: Registration[] = [];
-let subscription: EmitterSubscription | null = null;
+let unlisten: (() => void) | null = null;
 
-function dispatch(event: HardwareKeyEvent): void {
+/** Whether some handler took the key. */
+function dispatch(event: HardwareKeyEvent): boolean {
   // Newest first: the last thing to register is the one on top of the UI, and
   // it can still hand the key back down by returning false.
   for (let i = registrations.length - 1; i >= 0; i--) {
@@ -83,9 +82,10 @@ function dispatch(event: HardwareKeyEvent): void {
       registration.keys.includes(event.key) &&
       registration.handler(event) !== false
     ) {
-      return;
+      return true;
     }
   }
+  return false;
 }
 
 /**
@@ -98,13 +98,13 @@ function syncNative(): void {
   registrations.forEach(registration =>
     registration.keys.forEach(key => keys.add(key)),
   );
-  NativeKeyEvents?.setInterceptedKeys(Array.from(keys));
+  keySource.setInterceptedKeys(Array.from(keys));
 
-  if (registrations.length > 0 && !subscription) {
-    subscription = DeviceEventEmitter.addListener(KEY_EVENT, dispatch);
-  } else if (registrations.length === 0 && subscription) {
-    subscription.remove();
-    subscription = null;
+  if (registrations.length > 0 && !unlisten) {
+    unlisten = keySource.listen(dispatch);
+  } else if (registrations.length === 0 && unlisten) {
+    unlisten();
+    unlisten = null;
   }
 }
 

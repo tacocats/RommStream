@@ -1,10 +1,11 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { FocusablePressable } from '../components/FocusablePressable';
 import { BackIcon, SearchIcon } from '../components/icons';
 import { MainTab, Sidebar } from '../components/Sidebar';
+import { useHardwareKeys } from '../input/hardwareKeys';
 import { ContentNavigation, RootStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { GameDetailsScreen } from './GameDetailsScreen';
@@ -43,6 +44,21 @@ export function MainScreen({ navigation }: Props) {
 
   const selectTab = (nextTab: MainTab) => setStack([{ screen: nextTab }]);
   const goBack = () => setStack(s => (s.length > 1 ? s.slice(0, -1) : s));
+
+  // On the desktop build Back (Escape / B) steps back out of a drilled-in
+  // view, like the on-screen back button. Android TV keeps its existing
+  // behaviour, where the remote's Back belongs to the system. Declined while
+  // another root screen (a game, Settings) is on top, so Back reaches it.
+  useHardwareKeys(
+    ['back'],
+    () => {
+      if (!navigation.isFocused()) {
+        return false;
+      }
+      goBack();
+    },
+    canGoBack && Platform.OS === 'web',
+  );
 
   const contentNavigation: ContentNavigation = useMemo(
     () => ({

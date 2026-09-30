@@ -21,7 +21,7 @@ pre-commit:
 
           - name: typecheck
             glob: '*.{ts,tsx}'
-            run: npx tsc --noEmit
+            run: npm run typecheck
 
           - name: jest-related
             glob: '*.{js,jsx,ts,tsx}'

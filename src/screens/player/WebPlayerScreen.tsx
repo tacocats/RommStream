@@ -1,16 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import {
-  WebView as WebViewBase,
-  WebViewMessageEvent,
-  WebViewProps,
-} from 'react-native-webview';
 import { useAuth } from '../../auth/AuthContext';
 import { HardwareKey, useHardwareKeys } from '../../input/hardwareKeys';
 import { getLoginPath } from '../../settings/settingsStore';
 import { colors } from '../../theme/colors';
 import { createLogger } from '../../utils/logger';
 import { PlayerMenu, PlayerMenuAction } from './PlayerMenu';
+import {
+  WebView as WebViewBase,
+  WebViewMessageEvent,
+  WebViewProps,
+} from './PlayerWebView';
 
 /**
  * react-native-webview forwards an imperative handle but declares itself as a

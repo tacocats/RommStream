@@ -4,5 +4,22 @@
     "types": ["jest"]
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["**/node_modules", "**/Pods", "website"]
+  // Web-only files need the DOM typings and `.web` resolution; they're
+  // checked by tsconfig.web.json, and the Electron main process by
+  // electron/tsconfig.json.
+  "exclude": [
+    "**/node_modules",
+    "**/Pods",
+    "website",
+    "dist",
+    "web",
+    "electron",
+    "**/*.web.ts",
+    "**/*.web.tsx",
+    "**/*.web.test.ts",
+    "**/*.web.test.tsx",
+    "src/**/web/**",
+    "src/desktop/**",
+    "e2e-desktop"
+  ]
 }

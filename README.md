@@ -2,22 +2,23 @@
 
 <img src="docs/logo.svg" alt="RommStream" width="480" />
 
-### Stream your games on your TV like you would Movies on Plex/Jellyfin!
+### Stream your games like you would Movies!
 
 ---
 
 [![Android Build](https://github.com/tacocats/RomMStream/actions/workflows/android-build.yml/badge.svg)](https://github.com/tacocats/RomMStream/actions/workflows/android-build.yml)
+[![Desktop Build](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml/badge.svg)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Android%20TV%20%7C%20tvOS-informational)](#)
+[![TV](https://img.shields.io/badge/TV-Android%20TV%20%7C%20tvOS-informational)](#)
+[![Desktop](https://img.shields.io/badge/desktop-Windows%20%7C%20macOS%20%7C%20Linux-informational)](#)
 
 ---
 
 </div>
 
-RomMStream is a React Native TV app for Android TV and Apple TV (tvOS) that signs in to a
-[RomM](https://github.com/rommapp/romm) server, browses your library by
-platform, and launches the game in a WebView pointed at RomM's own web
-player.
+RommStream is a React Native application that connects to a
+[RomM](https://github.com/rommapp/romm) server, lets you browse your library
+by platform, and launches games in a WebView running Romm's own web player.
 
 ## Table of Contents
 
@@ -26,6 +27,7 @@ player.
 - [Developers](#developers)
   - [Prerequisites](#prerequisites)
   - [Running it](#running-it)
+  - [Desktop builds](#desktop-builds)
   - [Testing](#testing)
   - [Project layout](#project-layout)
   - [Notes on HTTP-only RomM servers](#notes-on-http-only-romm-servers)
@@ -99,6 +101,57 @@ bundle exec pod install --project-directory=ios
 npx react-native run-tvos --simulator "Apple TV"
 ```
 
+### Desktop builds
+
+The Windows / macOS / Linux app is the same React Native code, bundled for
+the web with [react-native-web](https://necolas.github.io/react-native-web/)
+and Vite (`vite.config.mts`, entry `web/index.tsx`) and hosted in an
+Electron shell (`electron/`). Platform differences live in `.web.ts(x)`
+siblings that Vite picks over the native file, so the TV builds don't see
+them:
+
+| Native (TV)                           | Desktop                                                                                                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| react-native-tvos focus engine        | `src/input/web/spatialNavigation.ts` (D-pad focus), with `hasTVPreferredFocus` / `TVFocusGuideView` given web meanings in `web/shims/react-native.tsx` |
+| Remote keys via `RommStreamKeyEvents` | `src/input/web/desktopInput.ts`: keyboard, gamepad (Gamepad API) and keys the main process takes off the game webview                                  |
+| Keychain (`react-native-keychain`)    | Electron `safeStorage` (`src/auth/secureStore.web.ts` → `electron/secureStore.ts`)                                                                     |
+| `react-native-webview`                | Electron `<webview>` (`src/screens/player/PlayerWebView.web.tsx`), with `window.ReactNativeWebView` recreated by `electron/guestPreload.ts`            |
+| `fetch` (no CORS)                     | Cross-origin `fetch` routed through the main process (`src/desktop/fetchBridge.ts` → `electron/rommFetch.ts`)                                          |
+
+```sh
+npm run dev:desktop     # Vite dev server (hot reload) + Electron
+npm run start:desktop   # production build, run from dist/
+npm run dist:desktop    # installers for the current OS, in release/
+npm run dev:web         # the web build alone in a browser (no Electron:
+                        # API calls hit CORS unless your RomM allows it)
+```
+
+Installers per OS (`electron-builder.yml`): Windows NSIS installer and
+portable `.exe`, macOS `.dmg`/`.zip` (Apple silicon and Intel), Linux
+AppImage, `.deb` and `.rpm`. CI builds all of them (`desktop-build.yml`).
+They are **unsigned** for now: Windows SmartScreen warns on first run ("More
+info" → "Run anyway"), and on macOS right-click the app → Open the first
+time (or `xattr -dr com.apple.quarantine /Applications/RommStream.app`).
+
+Using it from the couch:
+
+- Opens fullscreen. **F11** (or Alt+Enter) toggles windowed mode; Settings →
+  Desktop has "Start fullscreen" and "Start when I sign in", plus **Quit**.
+  The mouse cursor hides after a few seconds without movement.
+- **Arrows / D-pad / left stick** move focus, **Enter / A** selects,
+  **Escape / Backspace / B** goes back.
+- In a game the controller belongs to the game. **Escape**, the
+  controller's **Guide** button, or **Select + Start** together open the
+  pause menu.
+- Self-signed HTTPS RomM: Settings → Desktop → "Trust this server's
+  certificate". For the very first sign-in, start the app with
+  `ROMMSTREAM_TRUSTED_HOSTS=romm.home.local` (comma-separated, `host:port`
+  allowed) instead.
+- Linux: hardware video decoding (helps the streamed player) is opt-in with
+  `ROMMSTREAM_ENABLE_VAAPI=1`. With no keyring running (Secret Service or
+  KWallet), the saved sign-in is stored with a fixed key rather than
+  encrypted.
+
 ### Testing
 
 #### Unit, integration and component tests
@@ -110,7 +163,7 @@ v14 (note its API is async: `await render(...)`, `await fireEvent.press(...)`).
 npm test               # whole suite
 npm run test:watch
 npm run test:coverage  # coverage for src/
-npm run typecheck      # tsc --noEmit
+npm run typecheck      # tsc: native, web (tsconfig.web.json), Electron, desktop e2e
 npm run lint
 ```
 
@@ -126,6 +179,10 @@ npm run lint
   installs a `fetch` mock that fails loudly unless a test queues a response.
   Shared helpers (`mockFetchOnce`, `createAuthValue`, `createScreenProps`)
   are in `src/testUtils/`.
+- Jest runs two projects (`jest.config.js`): `native`, the React Native
+  preset that covers the bulk of the app, and `web`, jsdom with `.web`
+  resolution for the desktop-only modules (`*.web.test.ts` and
+  `src/**/web/__tests__/`).
 - Gotcha: RNTL's `act` returns React's bare thenable, so
   `await expect(act(...)).resolves` does not wait for it. Wrap it in
   `Promise.resolve(...)` first (see `actAsync` in the AuthContext test).
@@ -164,13 +221,31 @@ physical Android TV attached over `adb`. Running against a release build
 would additionally need a network security config permitting cleartext to
 `10.0.2.2` (Detox's test server), see the Detox docs.
 
+#### End-to-end tests (Playwright, desktop)
+
+`e2e-desktop/desktop.spec.ts` launches the Electron app against a small mock
+RomM server (`e2e-desktop/mockRommServer.ts`, which sends no CORS headers) and
+signs in, browses, launches a game and opens the pause menu with the keyboard
+alone, then checks the sign-in survives a restart.
+
+```sh
+npm run build:desktop
+npm run e2e:desktop               # on a headless Linux box: xvfb-run -a npm run e2e:desktop
+ROMMSTREAM_E2E_EXECUTABLE=release/linux-unpacked/rommstream npm run e2e:desktop
+                                  # the same against a packaged app
+```
+
+Playwright's own `page.keyboard` delivers keys past the Electron main
+process, so keys meant for the running game go through
+`webContents.sendInputEvent` (`pressInGame` in the spec) instead.
+
 #### Git hooks
 
 [lefthook](https://lefthook.dev) installs the hooks on `npm install`
 (`lefthook.yml`):
 
 - **pre-commit**: Prettier on the staged files (fixes are re-staged), then
-  ESLint, `tsc --noEmit` and the Jest suites related to the staged files.
+  ESLint, `npm run typecheck` and the Jest suites related to the staged files.
 - **pre-push**: the full Jest suite.
 
 Skip once with `LEFTHOOK=0 git commit ...`; put personal tweaks in the
@@ -181,14 +256,19 @@ git-ignored `lefthook-local.yml`. Detox never runs from a hook.
 ```
 src/
   api/            RomM REST client (login, refresh, platforms, roms)
+  desktop/        Desktop build: the Electron bridge and fetch-through-main
   auth/           AuthContext (session state) + Keychain-backed secure storage
   components/     Shared TV-focusable UI pieces (top bar, rom grid, icons)
-  navigation/      React Navigation stack
+  input/          Remote/controller keys; web/ has the desktop focus + gamepad layer
+  navigation/     React Navigation stack
   screens/        Login, Main (Home/Platforms/Search tabs), Roms, Player (WebView), Settings
   settings/       On-device settings (login path, in-browser play) via AsyncStorage
   testUtils/      Helpers shared by the Jest tests
   theme/          Shared color tokens
 e2e/              Detox end-to-end tests (Android TV)
+web/              Web (desktop) entry point and the react-native shim
+electron/         Electron main process and preloads
+e2e-desktop/      Playwright end-to-end tests (desktop)
 ```
 
 ### Notes on HTTP-only RomM servers
@@ -203,6 +283,8 @@ Many self-hosted RomM instances run over plain HTTP on a LAN.
 - **tvOS**: `Info.plist` allows local-network HTTP (`NSAllowsLocalNetworking`)
   but not arbitrary HTTP over the internet. A remote, non-HTTPS RomM server
   will need an ATS exception added there.
+- **Desktop**: plain HTTP works as-is; API calls go through the Electron main
+  process, so there's no mixed-content blocking either.
 
 ## License
 

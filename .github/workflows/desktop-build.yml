@@ -1,0 +1,72 @@
+name: Desktop Build
+
+# Windows / macOS / Linux (Electron) builds. Lint, typecheck and the Jest
+# suite (desktop code included) run in android-build.yml on the same
+# triggers.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Desktop smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13
+          cache: npm
+      - run: npm ci
+      # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's
+      # sandbox needs.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: npm run build:desktop
+      - run: xvfb-run -a npm run e2e:desktop
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-desktop-results
+          path: artifacts/e2e-desktop
+
+  package:
+    name: Package (${{ matrix.os }})
+    needs: e2e
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13
+          cache: npm
+      - run: npm ci
+      - name: Install rpm tooling
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+      - run: npm run dist:desktop
+        env:
+          # Unsigned builds for now; see README "Desktop builds".
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rommstream-desktop-${{ runner.os }}
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error

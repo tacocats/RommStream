@@ -2,6 +2,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { FocusablePressable } from '../components/FocusablePressable';
+import { Toggle } from '../components/Toggle';
 import { RootStackParamList } from '../navigation/types';
 import {
   DEFAULT_IN_BROWSER_PLAY_ENABLED,
@@ -12,30 +13,9 @@ import {
   setLoginPath,
 } from '../settings/settingsStore';
 import { colors } from '../theme/colors';
+import { DesktopSettingsSection } from './DesktopSettingsSection';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
-
-interface ToggleProps {
-  value: boolean;
-  onValueChange: () => void;
-  testID: string;
-}
-
-/** A remote-friendly on/off switch, built on FocusablePressable rather than
- * RN's Switch so it gets the app's usual TV focus treatment for free. */
-function Toggle({ value, onValueChange, testID }: ToggleProps) {
-  return (
-    <FocusablePressable
-      style={[styles.toggleTrack, value && styles.toggleTrackOn]}
-      onPress={onValueChange}
-      accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
-      testID={testID}
-    >
-      <View style={[styles.toggleKnob, value && styles.toggleKnobOn]} />
-    </FocusablePressable>
-  );
-}
 
 export function SettingsScreen({ navigation }: Props) {
   const [inBrowserPlayEnabled, setInBrowserPlayEnabledInput] = useState(
@@ -95,6 +75,8 @@ export function SettingsScreen({ navigation }: Props) {
       >
         <Text style={styles.buttonText}>Save</Text>
       </FocusablePressable>
+
+      <DesktopSettingsSection />
     </View>
   );
 }
@@ -132,31 +114,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 16,
     maxWidth: 520,
-  },
-  toggleTrack: {
-    width: 52,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceSolid,
-    padding: 2,
-    justifyContent: 'center',
-  },
-  toggleTrackOn: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.accent,
-  },
-  toggleKnob: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.textMuted,
-    alignSelf: 'flex-start',
-  },
-  toggleKnobOn: {
-    backgroundColor: colors.accent,
-    alignSelf: 'flex-end',
   },
   button: {
     marginTop: 24,

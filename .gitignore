@@ -77,3 +77,9 @@ lefthook-local.yml
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+.vscode/tasks.json
+start.sh
+
+# Desktop (Electron) build output
+/dist
+/release
