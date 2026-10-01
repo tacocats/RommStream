@@ -7,18 +7,15 @@
 ---
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![TV](https://img.shields.io/badge/TV-Android%20TV%20%7C%20tvOS-informational)](#)
-[![Desktop](https://img.shields.io/badge/desktop-Windows%20%7C%20macOS%20%7C%20Linux-informational)](#)
-[![RomM](https://img.shields.io/badge/RomM-5.3.0%2B-blueviolet)](https://github.com/rommapp/romm)
+[![Romm](https://img.shields.io/badge/RomM-5.3.0%2B-blueviolet)](https://github.com/rommapp/romm)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=tacocats_RommStream&metric=alert_status)](https://sonarcloud.io/project/overview?id=tacocats_RommStream)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=tacocats_RommStream&metric=coverage)](https://sonarcloud.io/project/overview?id=tacocats_RommStream)
 
 [![Android TV Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/android-build.yml?branch=master&label=Android%20TV&logo=android)](https://github.com/tacocats/RomMStream/actions/workflows/android-build.yml)
 [![Apple TV Build](https://img.shields.io/badge/Apple%20TV-unavailable-lightgrey?logo=apple)](#)
 [![Windows Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/desktop-build.yml?branch=master&label=Windows&logo=windows)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
 [![Linux Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/desktop-build.yml?branch=master&label=Linux&logo=linux)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
 [![macOS Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/desktop-build.yml?branch=master&label=macOS&logo=apple)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
-
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=tacocats_RommStream&metric=alert_status)](https://sonarcloud.io/project/overview?id=tacocats_RommStream)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=tacocats_RommStream&metric=coverage)](https://sonarcloud.io/project/overview?id=tacocats_RommStream)
 
 ---
 
