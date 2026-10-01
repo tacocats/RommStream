@@ -17,6 +17,9 @@
 [![Linux Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/desktop-build.yml?branch=master&label=Linux&logo=linux)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
 [![macOS Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/desktop-build.yml?branch=master&label=macOS&logo=apple)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
 
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=tacocats_RommStream&metric=alert_status)](https://sonarcloud.io/project/overview?id=tacocats_RommStream)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=tacocats_RommStream&metric=coverage)](https://sonarcloud.io/project/overview?id=tacocats_RommStream)
+
 ---
 
 </div>
