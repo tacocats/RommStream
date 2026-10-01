@@ -42,12 +42,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so Sonar can attribute new code and blame.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22.13
           cache: npm
       - run: npm ci
       - run: npm run test:coverage -- --ci
+      # Secrets aren't available to PRs from forks, so skip the scan there.
+      - name: SonarQube Cloud scan
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   build-android:
     name: Build Android
