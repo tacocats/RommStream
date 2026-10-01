@@ -13,9 +13,9 @@
 
 [![Android TV Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/android-build.yml?branch=master&label=Android%20TV&logo=android)](https://github.com/tacocats/RomMStream/actions/workflows/android-build.yml)
 [![Apple TV Build](https://img.shields.io/badge/Apple%20TV-unavailable-lightgrey?logo=apple)](#)
-[![Windows Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/desktop-build.yml?branch=master&label=Windows&logo=windows)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
+[![Windows Build](https://img.shields.io/badge/Windows-unavailable-lightgrey?logo=windows)](#)
 [![Linux Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/desktop-build.yml?branch=master&label=Linux&logo=linux)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
-[![macOS Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/desktop-build.yml?branch=master&label=macOS&logo=apple)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
+[![macOS Build](https://img.shields.io/badge/macOS-unavailable-lightgrey?logo=apple)](#)
 
 ---
 
@@ -133,7 +133,9 @@ npm run dev:web         # the web build alone in a browser (no Electron:
 
 Installers per OS (`electron-builder.yml`): Windows NSIS installer and
 portable `.exe`, macOS `.dmg`/`.zip` (Apple silicon and Intel), Linux
-AppImage, `.deb` and `.rpm`. CI builds all of them (`desktop-build.yml`).
+AppImage, `.deb` and `.rpm` (x64 and arm64, e.g. a Raspberry Pi 4/5 on a
+64-bit OS). CI builds all of them (`desktop-build.yml`); the Linux arm64
+packages are cross-built on the x64 runner.
 They are **unsigned** for now: Windows SmartScreen warns on first run ("More
 info" → "Run anyway"), and on macOS right-click the app → Open the first
 time (or `xattr -dr com.apple.quarantine /Applications/RommStream.app`).

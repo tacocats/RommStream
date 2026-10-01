@@ -83,3 +83,4 @@ start.sh
 # Desktop (Electron) build output
 /dist
 /release
+.vscode/settings.json
