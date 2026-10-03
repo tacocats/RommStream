@@ -107,6 +107,48 @@ export interface RommStats {
   TOTAL_FILESIZE_BYTES: number;
 }
 
+/** The 202 body of POST /api/streaming/sessions: a container is reserved and
+ * the game is on its way up. The room URL follows over the socket. */
+export interface RommLaunchingSession {
+  platform: string;
+  container: string;
+  label: string;
+  rom_name: string;
+  claimed_at: string;
+}
+
+export interface RommSessionTermination {
+  ended_by?: string | null;
+  reason?: string | null;
+  ended_at?: string | null;
+  platform?: string | null;
+  rom_id?: number | null;
+  rom_name?: string | null;
+}
+
+/** GET .../status and POST .../heartbeat for a platform's streaming session. */
+export interface RommSessionStatus {
+  status: 'active' | 'ended';
+  platform: string;
+  extraction_phase?: string | null;
+  termination?: RommSessionTermination | null;
+}
+
+export interface RommMemoryCardSummary {
+  file_count: number;
+  total_bytes: number;
+  game_codes: string[];
+}
+
+/** The 428 body of a claim: the container still holds a memory card nobody
+ * has decided about. Claim again with `card_import` set to answer. */
+export interface RommMemoryCardImportRequired {
+  code: 'memory_card_import_required';
+  outcome: 'found' | 'unreadable';
+  summary?: RommMemoryCardSummary | null;
+  reason?: string | null;
+}
+
 export class RommApiError extends Error {
   status?: number;
 
@@ -114,5 +156,18 @@ export class RommApiError extends Error {
     super(message);
     this.name = 'RommApiError';
     this.status = status;
+  }
+}
+
+export class MemoryCardImportRequiredError extends RommApiError {
+  details: RommMemoryCardImportRequired;
+
+  constructor(details: RommMemoryCardImportRequired) {
+    super(
+      'The streaming container holds a memory card to adopt or discard',
+      428,
+    );
+    this.name = 'MemoryCardImportRequiredError';
+    this.details = details;
   }
 }

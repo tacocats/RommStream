@@ -1,178 +1,33 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  heartbeatStreamingSession,
+  releaseStreamingSession,
+} from '../../api/rommClient';
+import { useAuth } from '../../auth/AuthContext';
 import { RootStackParamList } from '../../navigation/types';
 import {
   resolutionPresets,
   selkiesCommands,
   selkiesPostMessageScript,
 } from '../../player/selkies/commands';
+import { createLogger } from '../../utils/logger';
 import { WebPlayerScreen } from './WebPlayerScreen';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'GameStreamPlayer'>;
 
-// RomM's `/rom/:id/stream` route lands on a lobby whose Play button reads
-// "Stream on <container>" rather than the browser-emulator lobby's plain
-// "Play" / `.play-button` / `.r-v2-ejs__play`, and its game surface is a
-// <video> element instead of a <canvas>. Its handler needs no user gesture,
-// so press it for the user: a TV remote shouldn't have to scroll a web page
-// to start the game. On pages without a matching button (the plain rom page
-// fallback) this gives up after a while.
-//
-// This script is presently identical to EmulatorPlayerScreen's — both
-// player types currently boot through the same RomM lobby UI — but each
-// screen owns its own copy so the launch sequences can diverge (e.g. this
-// player has no EmulatorJS touch gamepad to disable) without one player's
-// fix risking a regression in the other's.
-//
-// Pressing Play with `.click()` leaves DOM focus sitting on the (now hidden)
-// lobby button, so keys go nowhere — the video has to be focused before a
-// controller does anything. It gets a real pointer sequence rather than
-// another bare `.click()`: that both moves focus and counts as the user
-// gesture the page needs before it may start audio. Focus is then held
-// against the page moving it around while the stream connects, and `canvas`
-// is posted back so the native side can put Android focus on the WebView too.
-const AUTO_PLAY_SCRIPT = `
-  (function () {
-    var post = function (payload) {
-      window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-    };
+const log = createLogger('streaming');
 
-    var style = document.createElement('style');
-    style.textContent = '.ejs_virtualGamepad_parent { display: none !important; }';
-    document.head.appendChild(style);
+// RomM's own player refreshes its claim this often; one that stops counts as
+// abandoned and the next claim may take the container over.
+const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 
-    var disableTouchGamepad = function () {
-      var tries = 0;
-      var timer = setInterval(function () {
-        var ejs = window.EJS_emulator;
-        if (ejs && typeof ejs.changeSettingOption === 'function') {
-          clearInterval(timer);
-          try { ejs.changeSettingOption('virtual-gamepad', 'disabled'); } catch (e) {}
-        } else if (++tries > 300) {
-          clearInterval(timer);
-        }
-      }, 200);
-    };
-
-    // RomM's v2 UI pops up a "New version available" toast over the game
-    // ('.r-v2-new-version') with no keyboard/gamepad focus of its own, so a
-    // TV remote has no way to clear it. It can appear any time, not just on
-    // load, so this keeps polling for the rest of the session instead of
-    // giving up after a fixed number of tries like the one-shot checks above.
-    var dismissNewVersionToast = function () {
-      setInterval(function () {
-        var dismiss = document.querySelector('.r-v2-new-version__dismiss');
-        if (dismiss) { dismiss.click(); }
-      }, 1000);
-    };
-
-    var pressCentre = function (el) {
-      var rect = el.getBoundingClientRect();
-      var base = {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: Math.round(rect.left + rect.width / 2),
-        clientY: Math.round(rect.top + rect.height / 2),
-        button: 0,
-      };
-      ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(function (type) {
-        var down = type === 'pointerdown' || type === 'mousedown';
-        var Ctor = type.indexOf('pointer') === 0 && window.PointerEvent ? PointerEvent : MouseEvent;
-        var init = {};
-        for (var key in base) { init[key] = base[key]; }
-        init.buttons = down ? 1 : 0;
-        if (Ctor === window.PointerEvent) { init.pointerType = 'mouse'; init.isPrimary = true; }
-        try { el.dispatchEvent(new Ctor(type, init)); } catch (e) {}
-      });
-    };
-
-    // EmulatorJS draws into a canvas; the /rom/:id/stream route plays a remote
-    // container in a video element instead, and wants the same treatment.
-    var findGameSurface = function () {
-      return document.querySelector('canvas.ejs_canvas') ||
-        document.querySelector('#game canvas') ||
-        document.querySelector('canvas') ||
-        document.querySelector('video');
-    };
-
-    var focusGameSurface = function () {
-      var pressed = false;
-      var tries = 0;
-      var held = 0;
-      var timer = setInterval(function () {
-        var surface = findGameSurface();
-        if (!surface) {
-          if (++tries > 150) { clearInterval(timer); }
-          return;
-        }
-        // Neither element is focusable unless it's given a tab index.
-        if (!surface.hasAttribute('tabindex')) { surface.setAttribute('tabindex', '-1'); }
-        if (!pressed) {
-          pressed = true;
-          pressCentre(surface);
-          post({ type: 'canvas' });
-        }
-        if (document.activeElement !== surface) {
-          surface.focus({ preventScroll: true });
-          held = 0;
-        } else if (++held > 5) {
-          // Focus has stayed put through a second of start-up; it's the game's now.
-          clearInterval(timer);
-        }
-      }, 200);
-    };
-
-    // The stream itself runs in a cross-origin iframe, out of reach of both
-    // this script and the menu commands (selkies-core ignores messages from
-    // other origins). Hand its URL to the native side, which loads it as the
-    // top-level page.
-    var handOffStreamFrame = function () {
-      var tries = 0;
-      var timer = setInterval(function () {
-        var frame = document.querySelector('iframe[src]');
-        if (frame && frame.src) {
-          clearInterval(timer);
-          post({ type: 'streamFrame', src: frame.src });
-        } else if (++tries > 300) {
-          clearInterval(timer);
-        }
-      }, 200);
-    };
-
-    var findPlayButton = function () {
-      var byClass = document.querySelector('button.play-button, button.r-v2-ejs__play');
-      if (byClass) { return byClass; }
-      var buttons = document.querySelectorAll('button');
-      for (var i = 0; i < buttons.length; i++) {
-        var text = buttons[i].textContent.trim().toLowerCase();
-        if (text === 'play' || text.indexOf('stream on') === 0) { return buttons[i]; }
-      }
-      return null;
-    };
-    var tries = 0;
-    var timer = setInterval(function () {
-      var btn = findPlayButton();
-      if (btn) {
-        clearInterval(timer);
-        btn.click();
-        disableTouchGamepad();
-        dismissNewVersionToast();
-        focusGameSurface();
-        handOffStreamFrame();
-      } else if (++tries > 150) {
-        clearInterval(timer);
-      }
-    }, 200);
-  })();
-  true;
-`;
-
-// Runs on the streaming page once it is the top-level document: it wraps the
-// actual selkies-core in #session-frame (same origin). Key presses go to
-// whichever element has focus, so put it on the core and tell native to give
-// the WebView Android focus.
-const STREAM_FRAME_SCRIPT = `
+// `playUrl` is the session's room URL (what RomM's player would load in its
+// stream iframe), loaded here as the top-level page so the menu commands can
+// reach it. It wraps the actual selkies-core in #session-frame (same
+// origin). Key presses go to whichever element has focus, so put it on the
+// core and tell native to give the WebView Android focus.
+const ROOM_SCRIPT = `
   (function () {
     var tries = 0;
     var timer = setInterval(function () {
@@ -194,9 +49,55 @@ const STREAM_FRAME_SCRIPT = `
   true;
 `;
 
-/** RomM's server-side streamed container player (`/rom/:id/stream`). */
+/**
+ * Plays a streaming session GameDetailsScreen has already claimed, keeping
+ * the claim alive while the screen is up and releasing it (RomM saves on
+ * release) when the player leaves.
+ */
 export function GameStreamPlayerScreen({ navigation, route }: Props) {
-  const { romName, playUrl } = route.params;
+  const { romName, playUrl, platform, container } = route.params;
+  const { withAuth } = useAuth();
+
+  // withAuth changes identity whenever the token refreshes; the session's
+  // lifetime mustn't, or a refresh mid-game would release it.
+  const withAuthRef = useRef(withAuth);
+  withAuthRef.current = withAuth;
+  const goBackRef = useRef(navigation.goBack);
+  goBackRef.current = navigation.goBack;
+
+  useEffect(() => {
+    let ended = false;
+    const timer = setInterval(() => {
+      withAuthRef
+        .current((url, token) =>
+          heartbeatStreamingSession(url, token, platform, container),
+        )
+        .then(status => {
+          if (status.status === 'ended' && !ended) {
+            ended = true;
+            log.warn(
+              `session on ${container} ended`,
+              status.termination?.reason ?? '',
+            );
+            goBackRef.current();
+          }
+        })
+        .catch(e => log.warn('heartbeat failed', e));
+    }, HEARTBEAT_INTERVAL_MS);
+
+    return () => {
+      clearInterval(timer);
+      if (ended) {
+        return;
+      }
+      withAuthRef
+        .current((url, token) =>
+          releaseStreamingSession(url, token, platform, { container }),
+        )
+        .catch(e => log.warn(`could not release ${container}`, e));
+    };
+  }, [platform, container]);
+
   // selkies-core defaults gamepad capture to enabled; tracked here purely to
   // label the menu item with the action it's about to take.
   const [gamepadEnabled, setGamepadEnabled] = useState(true);
@@ -205,8 +106,7 @@ export function GameStreamPlayerScreen({ navigation, route }: Props) {
     <WebPlayerScreen
       romName={romName}
       playUrl={playUrl}
-      autoPlayScript={AUTO_PLAY_SCRIPT}
-      frameScript={STREAM_FRAME_SCRIPT}
+      autoPlayScript={ROOM_SCRIPT}
       onExit={navigation.goBack}
       menuActions={send => [
         {

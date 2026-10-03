@@ -75,6 +75,23 @@ describe('createBridgedFetch', () => {
     );
   });
 
+  it("asks the main process for its session's cookies on credentials: include", async () => {
+    const { bridge, fetch } = setUp();
+
+    await fetch('https://romm.example/api/login', {
+      method: 'POST',
+      credentials: 'include',
+    });
+    await fetch('https://romm.example/api/platforms', { credentials: 'omit' });
+
+    expect(jest.mocked(bridge.fetch).mock.calls[0][0]).toMatchObject({
+      credentials: 'include',
+    });
+    expect(jest.mocked(bridge.fetch).mock.calls[1][0]).not.toHaveProperty(
+      'credentials',
+    );
+  });
+
   it('leaves same-origin requests to the browser', async () => {
     const { bridge, browserFetch, fetch } = setUp();
 

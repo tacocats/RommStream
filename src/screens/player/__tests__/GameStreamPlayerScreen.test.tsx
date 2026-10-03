@@ -1,18 +1,25 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 import { DeviceEventEmitter } from 'react-native';
+import {
+  heartbeatStreamingSession,
+  releaseStreamingSession,
+} from '../../../api/rommClient';
 import { useAuth } from '../../../auth/AuthContext';
 import { createAuthValue } from '../../../testUtils/mockAuth';
 import { createScreenProps } from '../../../testUtils/navigation';
 import { GameStreamPlayerScreen } from '../GameStreamPlayerScreen';
 
 jest.mock('../../../auth/AuthContext');
+jest.mock('../../../api/rommClient');
 jest.mock('../../../input/tvFocus');
 
 const mockedUseAuth = jest.mocked(useAuth);
+const mockedHeartbeat = jest.mocked(heartbeatStreamingSession);
+const mockedRelease = jest.mocked(releaseStreamingSession);
 
 const SERVER = 'https://romm.test';
-const PLAY_URL = `${SERVER}/rom/5/stream`;
+const PLAY_URL = 'https://stream.test/room/abc';
 
 function loginMessage(payload: unknown) {
   return { nativeEvent: { data: JSON.stringify(payload) } };
@@ -23,10 +30,14 @@ async function renderPlayer() {
     romId: 5,
     romName: 'Zelda',
     playUrl: PLAY_URL,
+    platform: 'psx',
+    container: 'romm-psx',
   });
-  await render(<GameStreamPlayerScreen {...screenProps.props} />);
+  const rendered = await render(
+    <GameStreamPlayerScreen {...screenProps.props} />,
+  );
   const webview = await screen.findByTestId('player-webview');
-  return { ...screenProps, webview };
+  return { ...screenProps, rendered, webview };
 }
 
 beforeEach(() => {
@@ -37,10 +48,12 @@ beforeEach(() => {
       password: 'p@ss',
     }),
   );
+  mockedHeartbeat.mockResolvedValue({ status: 'active', platform: 'psx' });
+  mockedRelease.mockResolvedValue(undefined);
 });
 
 describe('GameStreamPlayerScreen', () => {
-  it('loads the resolved stream URL once signed in', async () => {
+  it("loads the session's room URL once signed in", async () => {
     const { webview } = await renderPlayer();
 
     await fireEvent(
@@ -54,7 +67,7 @@ describe('GameStreamPlayerScreen', () => {
     });
   });
 
-  it('runs the stream launch script, which presses "Stream on" and focuses the video', async () => {
+  it('focuses the stream core on the room page rather than driving a lobby', async () => {
     const { webview } = await renderPlayer();
 
     await fireEvent(
@@ -65,10 +78,56 @@ describe('GameStreamPlayerScreen', () => {
 
     const script =
       screen.getByTestId('player-webview').props.injectedJavaScript;
-    expect(script).toContain('stream on');
-    expect(script).toContain("querySelector('video')");
-    expect(script).toContain('focusGameSurface');
-    expect(script).toContain('dismissNewVersionToast');
+    expect(script).toContain("getElementById('session-frame')");
+    expect(script).not.toContain('stream on');
+  });
+
+  describe('session lifetime', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('sends a heartbeat every 30 seconds', async () => {
+      await renderPlayer();
+      expect(mockedHeartbeat).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(30 * 1000);
+      });
+
+      expect(mockedHeartbeat).toHaveBeenCalledWith(
+        SERVER,
+        'access-token',
+        'psx',
+        'romm-psx',
+      );
+    });
+
+    it('releases the session, saving, when the player closes', async () => {
+      const { rendered } = await renderPlayer();
+
+      await rendered.unmount();
+
+      expect(mockedRelease).toHaveBeenCalledWith(
+        SERVER,
+        'access-token',
+        'psx',
+        { container: 'romm-psx' },
+      );
+    });
+
+    it('leaves the player when the server reports the session ended', async () => {
+      mockedHeartbeat.mockResolvedValue({ status: 'ended', platform: 'psx' });
+      const { rendered, navigation } = await renderPlayer();
+
+      await act(async () => {
+        jest.advanceTimersByTime(30 * 1000);
+      });
+      expect(navigation.goBack).toHaveBeenCalled();
+
+      // Nothing left to release.
+      await rendered.unmount();
+      expect(mockedRelease).not.toHaveBeenCalled();
+    });
   });
 
   it("wires the pause menu's exit item to navigation.goBack", async () => {

@@ -30,6 +30,9 @@ export interface DesktopFetchRequest {
   method: string;
   headers: Record<string, string>;
   body: string | null;
+  /** 'include' sends and stores the default session's cookies; otherwise
+   * none are sent, as with a browser's cross-origin fetch. */
+  credentials?: 'include';
 }
 
 export interface DesktopFetchResponse {

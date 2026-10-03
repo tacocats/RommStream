@@ -6,6 +6,8 @@ import {
   mockFetchOnce,
 } from '../../testUtils/fetchMock';
 import {
+  claimStreamingSession,
+  ensureRommSession,
   getCollections,
   getConfig,
   getHeartbeat,
@@ -18,12 +20,15 @@ import {
   getRomsByVirtualCollection,
   getStats,
   getStreamingConfig,
+  getStreamingSessionStatus,
   getVirtualCollections,
+  heartbeatStreamingSession,
   login,
   normalizeServerUrl,
   refreshAccessToken,
+  releaseStreamingSession,
 } from '../rommClient';
-import { RommApiError, RommRom } from '../types';
+import { MemoryCardImportRequiredError, RommApiError, RommRom } from '../types';
 
 const SERVER = 'https://romm.test';
 const TOKENS = {
@@ -85,7 +90,7 @@ describe('login', () => {
     expect(body.get('username')).toBe('user');
     expect(body.get('password')).toBe('p&ss word');
     expect(body.get('scope')).toBe(
-      'me.read platforms.read roms.read collections.read',
+      'me.read platforms.read roms.read collections.read roms.user.write',
     );
   });
 
@@ -474,5 +479,227 @@ describe('getStreamingConfig', () => {
     await expect(getStreamingConfig(SERVER, 'tok')).rejects.toMatchObject({
       status: 404,
     });
+  });
+});
+
+describe('claimStreamingSession', () => {
+  const LAUNCHING = {
+    platform: 'ps2',
+    container: 'romm-pcsx2',
+    label: 'PCSX2',
+    rom_name: 'Okami',
+    claimed_at: '2026-10-01T12:00:00Z',
+  };
+
+  it('posts the rom id as JSON and returns the reserved container', async () => {
+    mockFetchOnce({ status: 202, body: LAUNCHING });
+
+    await expect(claimStreamingSession(SERVER, 'tok', 42)).resolves.toEqual(
+      LAUNCHING,
+    );
+
+    const [url, init] = fetchCall();
+    expect(url).toBe(`${SERVER}/api/streaming/sessions`);
+    expect(init?.method).toBe('POST');
+    expect(init?.headers).toEqual({
+      Authorization: 'Bearer tok',
+      'Content-Type': 'application/json',
+    });
+    expect(JSON.parse(String(init?.body))).toEqual({ rom_id: 42 });
+  });
+
+  it('sends only the options that were given, in the API names', async () => {
+    mockFetchOnce({ status: 202, body: LAUNCHING });
+
+    await claimStreamingSession(SERVER, 'tok', 42, {
+      stateId: 7,
+      cardImport: 'adopt',
+      multiplayer: false,
+    });
+
+    expect(JSON.parse(String(fetchCall()[1]?.body))).toEqual({
+      rom_id: 42,
+      state_id: 7,
+      card_import: 'adopt',
+      multiplayer: false,
+    });
+  });
+
+  it('turns a 428 memory card prompt into a typed error', async () => {
+    const prompt = {
+      code: 'memory_card_import_required',
+      outcome: 'found',
+      summary: { file_count: 2, total_bytes: 1024, game_codes: ['SLUS-123'] },
+    };
+    mockFetchOnce({ status: 428, body: prompt });
+
+    const error = await claimStreamingSession(SERVER, 'tok', 42).catch(e => e);
+    expect(error).toBeInstanceOf(MemoryCardImportRequiredError);
+    expect(error.status).toBe(428);
+    expect(error.details).toEqual(prompt);
+  });
+
+  it('throws a RommApiError with the detail when no container is free', async () => {
+    mockFetchOnce({ status: 409, body: { detail: 'All containers busy' } });
+
+    const error = await claimStreamingSession(SERVER, 'tok', 42).catch(e => e);
+    expect(error).toBeInstanceOf(RommApiError);
+    expect(error).not.toBeInstanceOf(MemoryCardImportRequiredError);
+    expect(error.message).toBe('All containers busy');
+    expect(error.status).toBe(409);
+  });
+});
+
+describe('bearer-authenticated requests', () => {
+  it('leave the login session cookie out, so a POST is not held to CSRF', async () => {
+    mockFetchOnce({ status: 202, body: {} });
+    mockFetchOnce({ body: { status: 'active', platform: 'ps2' } });
+    mockFetchOnce({ body: {} });
+    mockFetchOnce({ body: [] });
+
+    await claimStreamingSession(SERVER, 'tok', 42);
+    await heartbeatStreamingSession(SERVER, 'tok', 'ps2');
+    await releaseStreamingSession(SERVER, 'tok', 'ps2');
+    await getPlatforms(SERVER, 'tok');
+
+    for (let i = 0; i < 4; i++) {
+      expect(fetchCall(i)[1]?.credentials).toBe('omit');
+    }
+  });
+
+  it("surface a short plain-text error body as the error's message", async () => {
+    mockFetchOnce({
+      status: 403,
+      statusText: 'Forbidden',
+      text: 'CSRF token verification failed',
+    });
+
+    const error = await claimStreamingSession(SERVER, 'tok', 42).catch(e => e);
+    expect(error.message).toBe('CSRF token verification failed');
+    expect(error.status).toBe(403);
+  });
+
+  it('fall back to the status text for an HTML error page', async () => {
+    mockFetchOnce({
+      status: 502,
+      statusText: 'Bad Gateway',
+      text: '<html><body>502 Bad Gateway</body></html>',
+    });
+
+    const error = await getPlatforms(SERVER, 'tok').catch(e => e);
+    expect(error.message).toBe('Bad Gateway');
+  });
+});
+
+describe('getStreamingSessionStatus', () => {
+  it('gets the platform session status', async () => {
+    mockFetchOnce({ body: { status: 'active', platform: 'ps2' } });
+
+    await expect(
+      getStreamingSessionStatus(SERVER, 'tok', 'ps2'),
+    ).resolves.toEqual({ status: 'active', platform: 'ps2' });
+    expect(fetchUrl().pathname).toBe('/api/streaming/sessions/ps2/status');
+  });
+});
+
+describe('heartbeatStreamingSession', () => {
+  it('posts to the heartbeat route, naming the container when given', async () => {
+    mockFetchOnce({ body: { status: 'active', platform: 'ps2' } });
+
+    await heartbeatStreamingSession(SERVER, 'tok', 'ps2', 'romm-pcsx2');
+
+    expect(fetchCall()[1]?.method).toBe('POST');
+    expect(fetchUrl().pathname).toBe('/api/streaming/sessions/ps2/heartbeat');
+    expect(fetchUrl().searchParams.get('container')).toBe('romm-pcsx2');
+  });
+
+  it('leaves the query off without a container', async () => {
+    mockFetchOnce({ body: { status: 'ended', platform: 'ps2' } });
+
+    await heartbeatStreamingSession(SERVER, 'tok', 'ps2');
+
+    expect(fetchCall()[0]).toBe(
+      `${SERVER}/api/streaming/sessions/ps2/heartbeat`,
+    );
+  });
+});
+
+describe('releaseStreamingSession', () => {
+  it('deletes the platform session, saving by default', async () => {
+    mockFetchOnce({ body: { status: 'released' } });
+
+    await releaseStreamingSession(SERVER, 'tok', 'ps2');
+
+    expect(fetchCall()[0]).toBe(`${SERVER}/api/streaming/sessions/ps2`);
+    expect(fetchCall()[1]?.method).toBe('DELETE');
+  });
+
+  it('passes save=false and the container through', async () => {
+    mockFetchOnce({ body: { status: 'released' } });
+
+    await releaseStreamingSession(SERVER, 'tok', 'ps2', {
+      save: false,
+      container: 'romm-pcsx2',
+    });
+
+    expect(fetchUrl().searchParams.get('save')).toBe('false');
+    expect(fetchUrl().searchParams.get('container')).toBe('romm-pcsx2');
+  });
+});
+
+describe('ensureRommSession', () => {
+  const LOGIN = {
+    username: 'player',
+    password: 'pässword',
+    loginPath: '/api/login',
+  };
+
+  it('reuses a live session cookie without signing in again', async () => {
+    mockFetchOnce({ body: { id: 1, username: 'player' } });
+
+    await ensureRommSession(SERVER, LOGIN);
+
+    expect(fetchMock()).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchCall();
+    expect(url).toBe(`${SERVER}/api/users/me`);
+    expect(init?.credentials).toBe('include');
+    expect(init?.headers).toBeUndefined();
+  });
+
+  it('signs in with HTTP Basic, keeping the cookie, when there is no session', async () => {
+    mockFetchOnce({ status: 401, body: { detail: 'Not authenticated' } });
+    mockFetchOnce({ body: { msg: 'Successfully logged in' } });
+
+    await ensureRommSession(SERVER, LOGIN);
+
+    const [url, init] = fetchCall(1);
+    expect(url).toBe(`${SERVER}/api/login`);
+    expect(init?.method).toBe('POST');
+    expect(init?.credentials).toBe('include');
+    // UTF-8 before base64, as RomM decodes it.
+    expect(init?.headers).toEqual({
+      Authorization: 'Basic cGxheWVyOnDDpHNzd29yZA==',
+    });
+  });
+
+  it('honours a custom login path', async () => {
+    mockFetchOnce({ status: 401 });
+    mockFetchOnce({ body: {} });
+
+    await ensureRommSession(SERVER, { ...LOGIN, loginPath: '/romm/login' });
+
+    expect(fetchCall(1)[0]).toBe(`${SERVER}/romm/login`);
+  });
+
+  it('throws the server detail when the sign-in is rejected', async () => {
+    mockFetchOnce({ status: 401 });
+    mockFetchOnce({
+      status: 401,
+      body: { detail: 'Incorrect username or password' },
+    });
+
+    const error = await ensureRommSession(SERVER, LOGIN).catch(e => e);
+    expect(error).toBeInstanceOf(RommApiError);
+    expect(error.message).toBe('Incorrect username or password');
   });
 });

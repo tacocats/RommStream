@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 import {
   getConfig,
@@ -6,7 +6,12 @@ import {
   getRom,
   getStreamingConfig,
 } from '../../api/rommClient';
-import { RommRomDetail } from '../../api/types';
+import { startStreamingSession } from '../../api/streamingSession';
+import {
+  MemoryCardImportRequiredError,
+  RommApiError,
+  RommRomDetail,
+} from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { setInBrowserPlayEnabled } from '../../settings/settingsStore';
 import { createAuthValue } from '../../testUtils/mockAuth';
@@ -15,12 +20,23 @@ import { GameDetailsScreen } from '../GameDetailsScreen';
 
 jest.mock('../../auth/AuthContext');
 jest.mock('../../api/rommClient');
+jest.mock('../../api/streamingSession');
 
 const mockedUseAuth = jest.mocked(useAuth);
 const mockedGetRom = jest.mocked(getRom);
 const mockedGetHeartbeat = jest.mocked(getHeartbeat);
 const mockedGetConfig = jest.mocked(getConfig);
 const mockedGetStreamingConfig = jest.mocked(getStreamingConfig);
+const mockedStartStreamingSession = jest.mocked(startStreamingSession);
+
+const SESSION = {
+  url: 'https://stream.test/room/abc',
+  platform: 'psx',
+  container: 'romm-psx',
+  label: 'DuckStation',
+  romName: "Tony Hawk's Pro Skater 2",
+  resumed: true,
+};
 
 const ROM: RommRomDetail = {
   id: 5,
@@ -141,21 +157,143 @@ describe('GameDetailsScreen', () => {
     });
   });
 
-  it('launches the stream player when that is what resolved', async () => {
-    mockedGetStreamingConfig.mockResolvedValue({
-      enabled: true,
-      containers: [{ platform: 'psx', container: 'romm-psx' }],
+  describe('streaming', () => {
+    beforeEach(() => {
+      mockedGetStreamingConfig.mockResolvedValue({
+        enabled: true,
+        containers: [{ platform: 'psx', container: 'romm-psx' }],
+      });
+      mockedGetRom.mockResolvedValueOnce(ROM);
     });
-    mockedGetRom.mockResolvedValueOnce(ROM);
-    const { navigation, rendered } = renderScreen();
-    await rendered;
 
-    await fireEvent.press(await screen.findByTestId('play-button'));
+    async function pressPlay() {
+      const screenProps = renderScreen();
+      await screenProps.rendered;
+      // Let the play path resolve to the stream before pressing.
+      await screen.findByText(ROM.summary as string);
+      await fireEvent.press(screen.getByTestId('play-button'));
+      return screenProps;
+    }
 
-    expect(navigation.navigate).toHaveBeenCalledWith('GameStreamPlayer', {
-      romId: 5,
-      romName: "Tony Hawk's Pro Skater 2",
-      playUrl: 'https://romm.test/rom/5/stream',
+    it('claims a session and opens the player on its room URL', async () => {
+      mockedStartStreamingSession.mockResolvedValueOnce(SESSION);
+      const { navigation } = await pressPlay();
+
+      expect(mockedStartStreamingSession).toHaveBeenCalledWith(
+        'https://romm.test',
+        'access-token',
+        5,
+        expect.objectContaining({ cardImport: undefined }),
+      );
+      expect(navigation.navigate).toHaveBeenCalledWith('GameStreamPlayer', {
+        romId: 5,
+        romName: "Tony Hawk's Pro Skater 2",
+        playUrl: 'https://stream.test/room/abc',
+        platform: 'psx',
+        container: 'romm-psx',
+      });
+    });
+
+    it('shows progress while the container starts, ignoring repeat presses', async () => {
+      let reportPhase: (phase: string) => void = () => {};
+      mockedStartStreamingSession.mockImplementationOnce(
+        (_url, _token, _romId, options) => {
+          reportPhase = phase => options?.onPhase?.(phase);
+          return new Promise(() => {});
+        },
+      );
+      await pressPlay();
+
+      expect(screen.getByTestId('stream-launching')).toBeOnTheScreen();
+      expect(screen.getByText('Starting stream…')).toBeOnTheScreen();
+
+      await act(async () => reportPhase('extracting'));
+      expect(
+        screen.getByText('Starting stream (extracting)…'),
+      ).toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByTestId('play-button'));
+      expect(mockedStartStreamingSession).toHaveBeenCalledTimes(1);
+    });
+
+    it('cancels the launch when the screen goes away', async () => {
+      let signal: AbortSignal | undefined;
+      mockedStartStreamingSession.mockImplementationOnce(
+        (_url, _token, _romId, options) => {
+          signal = options?.signal;
+          return new Promise(() => {});
+        },
+      );
+      const { rendered } = await pressPlay();
+
+      await (await rendered).unmount();
+
+      expect(signal?.aborted).toBe(true);
+    });
+
+    it('explains a busy server and lets Play try again', async () => {
+      mockedStartStreamingSession.mockRejectedValueOnce(
+        new RommApiError('All containers busy', 409),
+      );
+      await pressPlay();
+
+      expect(await screen.findByTestId('stream-error')).toHaveTextContent(
+        'Every streaming container for this platform is busy. Try again shortly.',
+      );
+      expect(screen.getByText('Play')).toBeOnTheScreen();
+    });
+
+    it("passes other 403s through in the server's own words", async () => {
+      mockedStartStreamingSession.mockRejectedValueOnce(
+        new RommApiError('CSRF token verification failed', 403),
+      );
+      await pressPlay();
+
+      expect(await screen.findByTestId('stream-error')).toHaveTextContent(
+        'CSRF token verification failed',
+      );
+    });
+
+    it('asks for a fresh sign-in when the token cannot start streams', async () => {
+      mockedStartStreamingSession.mockRejectedValueOnce(
+        new RommApiError('Forbidden', 403),
+      );
+      await pressPlay();
+
+      expect(await screen.findByTestId('stream-error')).toHaveTextContent(
+        /Sign out and sign in again/,
+      );
+    });
+
+    it('asks what to do with a leftover memory card, then claims again with the answer', async () => {
+      mockedStartStreamingSession
+        .mockRejectedValueOnce(
+          new MemoryCardImportRequiredError({
+            code: 'memory_card_import_required',
+            outcome: 'found',
+            summary: { file_count: 2, total_bytes: 1024, game_codes: ['SLUS'] },
+          }),
+        )
+        .mockResolvedValueOnce(SESSION);
+      const { navigation } = await pressPlay();
+
+      expect(await screen.findByTestId('memory-card-prompt')).toHaveTextContent(
+        /2 file\(s\) \(SLUS\)/,
+      );
+
+      await fireEvent.press(screen.getByTestId('memory-card-discard'));
+
+      expect(mockedStartStreamingSession).toHaveBeenLastCalledWith(
+        'https://romm.test',
+        'access-token',
+        5,
+        expect.objectContaining({ cardImport: 'discard' }),
+      );
+      expect(navigation.navigate).toHaveBeenCalledWith(
+        'GameStreamPlayer',
+        expect.objectContaining({ playUrl: SESSION.url }),
+      );
+      expect(screen.queryByTestId('memory-card-prompt')).toBeNull();
     });
   });
 

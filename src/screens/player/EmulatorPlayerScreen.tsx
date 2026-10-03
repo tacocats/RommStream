@@ -13,12 +13,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'EmulatorPlayer'>;
 // simply labelled "Play" is the last resort. On pages without any of these
 // (the plain rom page fallback) this gives up after a while.
 //
-// This script is presently identical to GameStreamPlayerScreen's — both
-// player types currently boot through the same RomM lobby UI — but each
-// screen owns its own copy so the launch sequences can diverge (e.g. the
-// stream player has no EmulatorJS touch gamepad to disable) without one
-// player's fix risking a regression in the other's.
-//
 // EmulatorJS also draws an on-screen touch gamepad whenever the device
 // reports a touchscreen (Android TV does), which is just clutter on a TV.
 // It's switched off through EmulatorJS's own "virtual-gamepad" setting once

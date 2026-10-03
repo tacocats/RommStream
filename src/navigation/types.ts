@@ -11,8 +11,17 @@ export type RootStackParamList = {
   GameDetails: { romId: number; romName: string; platformSlug: string };
   /** RomM's in-browser emulator (EmulatorJS, js-dos, PICO-8, Ruffle). */
   EmulatorPlayer: { romId: number; romName: string; playUrl: string };
-  /** RomM's server-side streamed container (`/rom/:id/stream`). */
-  GameStreamPlayer: { romId: number; romName: string; playUrl: string };
+  /**
+   * A claimed RomM streaming session: `playUrl` is its room URL, and
+   * `platform`/`container` identify the claim to keep alive and release.
+   */
+  GameStreamPlayer: {
+    romId: number;
+    romName: string;
+    playUrl: string;
+    platform: string;
+    container: string;
+  };
   Settings: undefined;
 };
 

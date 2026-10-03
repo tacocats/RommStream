@@ -1,8 +1,12 @@
 import { createLogger } from '../utils/logger';
 import { Config, Heartbeat, StreamingConfig } from '../utils/playPath';
 import {
+  MemoryCardImportRequiredError,
   RommApiError,
   RommCollection,
+  RommLaunchingSession,
+  RommMemoryCardImportRequired,
+  RommSessionStatus,
   RommPlatform,
   RommRecommendation,
   RommRom,
@@ -14,8 +18,10 @@ import {
 
 const log = createLogger('api');
 
-// Read-only scopes are enough for browsing + launching the web player.
-const REQUESTED_SCOPES = 'me.read platforms.read roms.read collections.read';
+// Read-only scopes are enough for browsing + launching the web player;
+// claiming and releasing a streaming container needs roms.user.write.
+const REQUESTED_SCOPES =
+  'me.read platforms.read roms.read collections.read roms.user.write';
 
 export function normalizeServerUrl(rawUrl: string): string {
   const trimmed = rawUrl.trim().replace(/\/+$/, '');
@@ -40,10 +46,16 @@ async function parseJsonOrThrow(response: Response) {
       `HTTP ${response.status} from ${(response.url ?? '').split('?')[0]}`,
       `body=${text.slice(0, 200)}`,
     );
+    // A short plain-text body is the server's own words (e.g. RomM's CSRF
+    // rejection); an HTML error page from a proxy is not worth showing.
+    const plainText =
+      body === undefined && text && text.length <= 200 && !text.startsWith('<')
+        ? text.trim()
+        : '';
     const detail =
       body && typeof body === 'object' && 'detail' in body
         ? String((body as { detail: unknown }).detail)
-        : response.statusText;
+        : plainText || response.statusText;
     throw new RommApiError(
       detail || `Request failed (${response.status})`,
       response.status,
@@ -95,6 +107,17 @@ function authHeaders(accessToken: string): Record<string, string> {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
+// Bearer calls leave cookies out (credentials: 'omit'). The client may also
+// hold RomM's login session cookie (see ensureRommSession), and with a live
+// session alongside, RomM's CSRF middleware no longer waves bearer requests
+// through: every POST/DELETE would fail CSRF verification with a 403.
+function bearer(accessToken: string): RequestInit {
+  return {
+    headers: authHeaders(accessToken),
+    credentials: 'omit',
+  };
+}
+
 // /api/platforms returns a plain array; /api/roms returns a paginated
 // { items: [...] } envelope. Accept either shape from either endpoint.
 function unwrapList<T>(body: unknown): T[] {
@@ -116,7 +139,7 @@ export async function getPlatforms(
   accessToken: string,
 ): Promise<RommPlatform[]> {
   const response = await fetch(`${serverUrl}/api/platforms`, {
-    headers: authHeaders(accessToken),
+    ...bearer(accessToken),
   });
   return unwrapList<RommPlatform>(await parseJsonOrThrow(response));
 }
@@ -144,7 +167,7 @@ export async function searchRoms(
   });
 
   const response = await fetch(`${serverUrl}/api/roms?${params.toString()}`, {
-    headers: authHeaders(accessToken),
+    ...bearer(accessToken),
   });
   return unwrapList<RommRom>(await parseJsonOrThrow(response));
 }
@@ -155,7 +178,7 @@ export async function getRom(
   romId: number,
 ): Promise<RommRomDetail> {
   const response = await fetch(`${serverUrl}/api/roms/${romId}`, {
-    headers: authHeaders(accessToken),
+    ...bearer(accessToken),
   });
   return (await parseJsonOrThrow(response)) as RommRomDetail;
 }
@@ -178,7 +201,7 @@ async function fetchAllRoms(
     });
 
     const response = await fetch(`${serverUrl}/api/roms?${params.toString()}`, {
-      headers: authHeaders(accessToken),
+      ...bearer(accessToken),
     });
     const body = await parseJsonOrThrow(response);
     const page = unwrapList<RommRom>(body);
@@ -254,7 +277,7 @@ export async function getRecentlyAddedRoms(
   });
 
   const response = await fetch(`${serverUrl}/api/roms?${params.toString()}`, {
-    headers: authHeaders(accessToken),
+    ...bearer(accessToken),
   });
   return unwrapList<RommRom>(await parseJsonOrThrow(response));
 }
@@ -268,7 +291,7 @@ export async function getRecommendations(
 
   const response = await fetch(
     `${serverUrl}/api/recommendations?${params.toString()}`,
-    { headers: authHeaders(accessToken) },
+    bearer(accessToken),
   );
   const body = await parseJsonOrThrow(response);
   return Array.isArray(body) ? (body as RommRecommendation[]) : [];
@@ -279,7 +302,7 @@ export async function getCollections(
   accessToken: string,
 ): Promise<RommCollection[]> {
   const response = await fetch(`${serverUrl}/api/collections`, {
-    headers: authHeaders(accessToken),
+    ...bearer(accessToken),
   });
   const body = await parseJsonOrThrow(response);
   return Array.isArray(body) ? (body as RommCollection[]) : [];
@@ -301,7 +324,7 @@ export async function getVirtualCollections(
 
   const response = await fetch(
     `${serverUrl}/api/collections/virtual?${params.toString()}`,
-    { headers: authHeaders(accessToken) },
+    bearer(accessToken),
   );
   const body = await parseJsonOrThrow(response);
   return Array.isArray(body) ? (body as RommVirtualCollection[]) : [];
@@ -312,7 +335,7 @@ export async function getStats(
   accessToken: string,
 ): Promise<RommStats> {
   const response = await fetch(`${serverUrl}/api/stats`, {
-    headers: authHeaders(accessToken),
+    ...bearer(accessToken),
   });
   return (await parseJsonOrThrow(response)) as RommStats;
 }
@@ -325,7 +348,7 @@ export async function getHeartbeat(
   accessToken: string,
 ): Promise<Heartbeat> {
   const response = await fetch(`${serverUrl}/api/heartbeat`, {
-    headers: authHeaders(accessToken),
+    ...bearer(accessToken),
   });
   const body = (await parseJsonOrThrow(response)) as Partial<Heartbeat> | null;
   return { EMULATION: body?.EMULATION ?? {} };
@@ -336,7 +359,7 @@ export async function getConfig(
   accessToken: string,
 ): Promise<Config> {
   const response = await fetch(`${serverUrl}/api/config`, {
-    headers: authHeaders(accessToken),
+    ...bearer(accessToken),
   });
   return ((await parseJsonOrThrow(response)) ?? {}) as Config;
 }
@@ -346,6 +369,7 @@ export async function getStreamingConfig(
   accessToken: string,
 ): Promise<StreamingConfig> {
   const response = await fetch(`${serverUrl}/api/streaming/config`, {
+    credentials: 'omit',
     headers: {
       ...authHeaders(accessToken),
       Accept: 'application/json',
@@ -359,4 +383,175 @@ export async function getStreamingConfig(
     enabled: body?.enabled ?? false,
     containers: body?.containers ?? [],
   };
+}
+
+export interface ClaimStreamingSessionOptions {
+  stateId?: number;
+  saveId?: number;
+  memoryCardId?: number;
+  /** The answer to a previous claim's MemoryCardImportRequiredError. */
+  cardImport?: 'adopt' | 'discard';
+  multiplayer?: boolean;
+}
+
+/**
+ * Reserve a streaming container for a rom and start loading it. Answers as
+ * soon as the container is reserved; the room URL arrives later over the
+ * socket as `streaming:launch-ready` (see api/streamingSession.ts).
+ */
+export async function claimStreamingSession(
+  serverUrl: string,
+  accessToken: string,
+  romId: number,
+  options: ClaimStreamingSessionOptions = {},
+): Promise<RommLaunchingSession> {
+  const body = {
+    rom_id: romId,
+    ...(options.stateId !== undefined && { state_id: options.stateId }),
+    ...(options.saveId !== undefined && { save_id: options.saveId }),
+    ...(options.memoryCardId !== undefined && {
+      memory_card_id: options.memoryCardId,
+    }),
+    ...(options.cardImport !== undefined && {
+      card_import: options.cardImport,
+    }),
+    ...(options.multiplayer !== undefined && {
+      multiplayer: options.multiplayer,
+    }),
+  };
+
+  const response = await fetch(`${serverUrl}/api/streaming/sessions`, {
+    method: 'POST',
+    credentials: 'omit',
+    headers: {
+      ...authHeaders(accessToken),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (response.status === 428) {
+    const details = (await response
+      .json()
+      .catch(() => null)) as RommMemoryCardImportRequired | null;
+    if (details?.code === 'memory_card_import_required') {
+      throw new MemoryCardImportRequiredError(details);
+    }
+  }
+  return (await parseJsonOrThrow(response)) as RommLaunchingSession;
+}
+
+/** Whether the caller still holds a platform's session, without extending it. */
+export async function getStreamingSessionStatus(
+  serverUrl: string,
+  accessToken: string,
+  platform: string,
+): Promise<RommSessionStatus> {
+  const response = await fetch(
+    `${serverUrl}/api/streaming/sessions/${encodeURIComponent(
+      platform,
+    )}/status`,
+    bearer(accessToken),
+  );
+  return (await parseJsonOrThrow(response)) as RommSessionStatus;
+}
+
+/**
+ * Keep a claimed session alive. RomM's own player calls this every ~30s; a
+ * session that stops refreshing counts as abandoned and can be taken over.
+ */
+export async function heartbeatStreamingSession(
+  serverUrl: string,
+  accessToken: string,
+  platform: string,
+  container?: string,
+): Promise<RommSessionStatus> {
+  const params = new URLSearchParams(
+    container !== undefined ? { container } : {},
+  );
+  const query = params.toString();
+
+  const response = await fetch(
+    `${serverUrl}/api/streaming/sessions/${encodeURIComponent(
+      platform,
+    )}/heartbeat${query ? `?${query}` : ''}`,
+    { method: 'POST', ...bearer(accessToken) },
+  );
+  return (await parseJsonOrThrow(response)) as RommSessionStatus;
+}
+
+/**
+ * Release a session and stop its emulator. `save: false` leaves without
+ * saving; RomM saves by default since a closed tab lands here too.
+ */
+export async function releaseStreamingSession(
+  serverUrl: string,
+  accessToken: string,
+  platform: string,
+  options: { save?: boolean; container?: string } = {},
+): Promise<void> {
+  const params = new URLSearchParams({
+    ...(options.container !== undefined && { container: options.container }),
+    ...(options.save === false && { save: 'false' }),
+  });
+  const query = params.toString();
+
+  const response = await fetch(
+    `${serverUrl}/api/streaming/sessions/${encodeURIComponent(platform)}${
+      query ? `?${query}` : ''
+    }`,
+    { method: 'DELETE', ...bearer(accessToken) },
+  );
+  await parseJsonOrThrow(response);
+}
+
+export interface RommLoginCredentials {
+  username: string;
+  password: string;
+  /** RomM's session-login endpoint, e.g. "/api/login" (Settings → Login path). */
+  loginPath: string;
+}
+
+// Hermes has both at runtime; React Native's TypeScript config just doesn't
+// declare them.
+const { btoa, TextEncoder } = globalThis as unknown as {
+  btoa(data: string): string;
+  TextEncoder: new () => { encode(input: string): Uint8Array };
+};
+
+function basicAuth(username: string, password: string): string {
+  const bytes = new TextEncoder().encode(`${username}:${password}`);
+  return `Basic ${btoa(String.fromCharCode(...bytes))}`;
+}
+
+/**
+ * Make sure this client's cookie store holds a live RomM login session.
+ *
+ * RomM's socket only puts a connection in its user's room — where streaming
+ * launch events are sent — when the handshake carries the `romm_session`
+ * cookie; it never looks at bearer tokens. The cookie is left to the
+ * platform's own store (`credentials: 'include'`) rather than read back,
+ * since fetch hides Set-Cookie from scripts.
+ *
+ * A live session is reused. Otherwise this signs in with HTTP Basic, which
+ * RomM's CSRF middleware lets through as long as no live session is
+ * presented alongside it.
+ */
+export async function ensureRommSession(
+  serverUrl: string,
+  { username, password, loginPath }: RommLoginCredentials,
+): Promise<void> {
+  const me = await fetch(`${serverUrl}/api/users/me`, {
+    credentials: 'include',
+  });
+  if (me.ok) {
+    return;
+  }
+
+  const response = await fetch(`${serverUrl}${loginPath}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Authorization: basicAuth(username, password) },
+  });
+  await parseJsonOrThrow(response);
 }

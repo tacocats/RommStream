@@ -18,6 +18,10 @@ export async function rommFetch(
     method: request.method,
     headers: request.headers,
     body: request.body ?? undefined,
+    // Explicit both ways: left unset, net.fetch sends the session's cookies
+    // anyway, and RomM holds any request carrying a live login session to
+    // CSRF checks the app's bearer requests can't pass.
+    credentials: request.credentials === 'include' ? 'include' : 'omit',
     // RomM answers some requests with redirects (e.g. to a trailing slash).
     redirect: 'follow',
   });

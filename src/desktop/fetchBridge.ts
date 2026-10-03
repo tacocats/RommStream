@@ -10,7 +10,8 @@ import type {
  * instead — the app code keeps calling plain fetch() and doesn't know.
  *
  * Only what the app actually sends is supported: string or URLSearchParams
- * bodies. Anything else, and same-origin requests, go to the browser's own
+ * bodies, and `credentials: 'include'` for the cookie-session requests
+ * (RomM's login and socket) that need the main process's cookie store. Anything else, and same-origin requests, go to the browser's own
  * fetch.
  */
 
@@ -54,6 +55,7 @@ function toRequest(
     method: (init?.method ?? 'GET').toUpperCase(),
     headers,
     body: body == null ? null : String(body),
+    ...(init?.credentials === 'include' && { credentials: 'include' }),
   };
 }
 

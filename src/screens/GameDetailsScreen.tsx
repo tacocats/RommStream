@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -8,14 +8,23 @@ import {
   View,
 } from 'react-native';
 import { getRom } from '../api/rommClient';
-import { RommRomDetail } from '../api/types';
+import { startStreamingSession } from '../api/streamingSession';
+import {
+  MemoryCardImportRequiredError,
+  RommApiError,
+  RommMemoryCardImportRequired,
+  RommRomDetail,
+} from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { CoverPlaceholder } from '../components/CoverPlaceholder';
 import { FocusablePressable } from '../components/FocusablePressable';
 import { PlayIcon, VerifiedIcon } from '../components/icons';
 import { platformLabelFor, resolveCoverUrl } from '../components/RomTile';
 import { ContentNavigation, RootStackParamList } from '../navigation/types';
-import { getInBrowserPlayEnabled } from '../settings/settingsStore';
+import {
+  getInBrowserPlayEnabled,
+  getLoginPath,
+} from '../settings/settingsStore';
 import { colors } from '../theme/colors';
 import { formatReleaseDate } from '../utils/formatDate';
 import { resolvePlayPath } from '../utils/resolvePlayPath';
@@ -49,16 +58,31 @@ function ChipRow({ label, items }: ChipRowProps) {
   );
 }
 
+function describeStreamError(e: unknown): string {
+  if (e instanceof RommApiError) {
+    // RomM's scope guard answers "Forbidden"; other 403s (e.g. a CSRF
+    // rejection) say what went wrong themselves.
+    if (e.status === 403 && e.message === 'Forbidden') {
+      return 'RomM did not give this app permission to start streams. Sign out and sign in again.';
+    }
+    if (e.status === 409) {
+      return 'Every streaming container for this platform is busy. Try again shortly.';
+    }
+  }
+  return e instanceof Error ? e.message : 'Could not start the stream';
+}
+
 /**
  * Details screen for a single rom: title, cover, metadata and a Play button
- * that hands off to the web player.
+ * that hands off to the web player. A streamed rom has its container claimed
+ * here first, so the player opens straight onto the stream's room URL.
  *
  * Play stays on screen until the app knows the game *can't* be launched, so
  * a slow load never costs the user the button their remote is focused on.
  */
 export function GameDetailsScreen({ route, navigation }: Props) {
   const { romId, romName, platformSlug } = route.params;
-  const { withAuth, serverUrl } = useAuth();
+  const { withAuth, serverUrl, username, password } = useAuth();
   const [rom, setRom] = useState<RommRomDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +93,18 @@ export function GameDetailsScreen({ route, navigation }: Props) {
     undefined,
   );
   const [inBrowserPlayEnabled, setInBrowserPlayEnabled] = useState(true);
+  // Non-null while a stream is being claimed and booted; `phase` is the
+  // server's progress while it unpacks a large title.
+  const [launching, setLaunching] = useState<{ phase: string | null } | null>(
+    null,
+  );
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  const [cardPrompt, setCardPrompt] =
+    useState<RommMemoryCardImportRequired | null>(null);
+  const launchAbort = useRef<AbortController | null>(null);
+
+  // Leaving mid-launch cancels it, which releases the container again.
+  useEffect(() => () => launchAbort.current?.abort(), []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,16 +134,61 @@ export function GameDetailsScreen({ route, navigation }: Props) {
     load();
   }, [load, navigation, romName]);
 
+  const startStream = async (cardImport?: 'adopt' | 'discard') => {
+    setLaunchError(null);
+    setCardPrompt(null);
+    setLaunching({ phase: null });
+    const controller = new AbortController();
+    launchAbort.current = controller;
+    try {
+      const loginPath = await getLoginPath();
+      const session = await withAuth((url, token) =>
+        startStreamingSession(url, token, romId, {
+          login: { username, password, loginPath },
+          cardImport,
+          signal: controller.signal,
+          onPhase: phase => setLaunching({ phase }),
+        }),
+      );
+      navigation.navigate('GameStreamPlayer', {
+        romId,
+        romName,
+        playUrl: session.url,
+        platform: session.platform,
+        container: session.container,
+      });
+    } catch (e) {
+      if (controller.signal.aborted) {
+        return;
+      }
+      if (e instanceof MemoryCardImportRequiredError) {
+        setCardPrompt(e.details);
+      } else {
+        setLaunchError(describeStreamError(e));
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setLaunching(null);
+      }
+    }
+  };
+
   // RomM's own rom page is the floor when nothing has resolved yet (e.g. the
   // rom detail fetch is still in flight): it can't play the game itself, but
   // its own UI is there to try.
   const play = () => {
+    if (launching) {
+      return;
+    }
     const path = playPath ?? `/rom/${romId}`;
-    const params = { romId, romName, playUrl: `${serverUrl}${path}` };
     if (path.endsWith('/stream')) {
-      navigation.navigate('GameStreamPlayer', params);
+      startStream();
     } else {
-      navigation.navigate('EmulatorPlayer', params);
+      navigation.navigate('EmulatorPlayer', {
+        romId,
+        romName,
+        playUrl: `${serverUrl}${path}`,
+      });
     }
   };
 
@@ -179,9 +260,65 @@ export function GameDetailsScreen({ route, navigation }: Props) {
                 hasTVPreferredFocus
                 testID="play-button"
               >
-                <PlayIcon color={colors.background} size={16} />
-                <Text style={styles.playButtonText}>Play</Text>
+                {launching ? (
+                  <ActivityIndicator
+                    color={colors.background}
+                    size="small"
+                    testID="stream-launching"
+                  />
+                ) : (
+                  <PlayIcon color={colors.background} size={16} />
+                )}
+                <Text style={styles.playButtonText}>
+                  {launching
+                    ? launching.phase
+                      ? `Starting stream (${launching.phase})…`
+                      : 'Starting stream…'
+                    : 'Play'}
+                </Text>
               </FocusablePressable>
+            )}
+
+            {launchError && (
+              <Text style={styles.error} testID="stream-error">
+                {launchError}
+              </Text>
+            )}
+
+            {cardPrompt && (
+              <View style={styles.noPlayer} testID="memory-card-prompt">
+                <Text style={styles.noPlayerTitle}>
+                  The streaming container has a memory card in it
+                </Text>
+                <Text style={styles.noPlayerText}>
+                  {cardPrompt.outcome === 'unreadable'
+                    ? 'It could not be read. Keep it in the container, or discard it and start fresh?'
+                    : `It holds ${
+                        cardPrompt.summary?.file_count ?? 'some'
+                      } file(s)${
+                        cardPrompt.summary?.game_codes.length
+                          ? ` (${cardPrompt.summary.game_codes.join(', ')})`
+                          : ''
+                      }. Keep it, or discard it and start fresh?`}
+                </Text>
+                <View style={styles.cardActions}>
+                  <FocusablePressable
+                    style={styles.retryButton}
+                    onPress={() => startStream('adopt')}
+                    hasTVPreferredFocus
+                    testID="memory-card-adopt"
+                  >
+                    <Text style={styles.retryButtonText}>Keep card</Text>
+                  </FocusablePressable>
+                  <FocusablePressable
+                    style={styles.retryButton}
+                    onPress={() => startStream('discard')}
+                    testID="memory-card-discard"
+                  >
+                    <Text style={styles.retryButtonText}>Discard card</Text>
+                  </FocusablePressable>
+                </View>
+              </View>
             )}
 
             {loading && (
@@ -320,6 +457,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   noPlayerText: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
+  cardActions: { flexDirection: 'row', gap: 12, marginTop: 12 },
   metadataLoading: { alignItems: 'flex-start', marginTop: 8 },
   metadataError: { marginTop: 8 },
   error: { color: colors.danger, fontSize: 15, marginBottom: 12 },
