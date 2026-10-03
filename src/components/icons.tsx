@@ -158,17 +158,19 @@ export function BackIcon({ color, size = 18 }: IconProps) {
 export function LogoMarkIcon({ color, size = 18 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      {/* TV with a play button, matching the app icon. */}
       <Path
-        d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"
+        d="M5 4h14a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"
         stroke={color}
         strokeWidth={2}
+        strokeLinejoin="round"
       />
+      <Path d="M10.25 7.25v6l5-3-5-3Z" fill={color} />
       <Path
-        d="M8.5 10h.01M15.5 10h.01M8.5 14.5c1 1 2.2 1.5 3.5 1.5s2.5-.5 3.5-1.5"
+        d="M12 16.5V20M8.5 20h7"
         stroke={color}
         strokeWidth={2}
         strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </Svg>
   );
