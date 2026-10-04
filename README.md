@@ -253,6 +253,18 @@ version (Linux package names) and passes `-PversionName` /
 `-PversionCode` to Gradle (`versionCode` = `MMmmpp`, so `0.1.0` → `100`;
 minor and patch stay below 100).
 
+Every file in the release gets a signed build-provenance attestation
+(`actions/attest`), which ties it to the workflow run and commit that built
+it. The desktop packages aren't code-signed yet, so this is how to check a
+download is genuine:
+
+```sh
+gh attestation verify RommStream-0.1.0-androidtv.apk -R tacocats/RomMStream
+```
+
+Only the `publish` job can write to the repo (create the release, store the
+attestation); every other job runs with read-only `contents`.
+
 The APK is signed with the release key from these repo secrets, and the
 workflow fails without them rather than shipping a debug-signed APK:
 
