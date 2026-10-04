@@ -25,14 +25,24 @@ RommStream is a React Native application that connects to a
 [Romm](https://github.com/rommapp/romm) server, lets you browse your library
 by platform, and launches games in a WebView running Romm's web player.
 
+> [!NOTE]
+> RommStream is not officially related to RomM in any way. It is a
+> third-party app, and "RommStream" is a placeholder name that may change in
+> the future out of respect for the RomM project.
+
 ## Table of Contents
 
 - [Demo](#demo)
 - [Screenshots](#screenshots)
+- [Users guide](#users-guide)
+  - [Server requirements](#server-requirements)
+  - [Getting the app](#getting-the-app)
+  - [Signing in](#signing-in)
 - [Developers](#developers)
   - [Prerequisites](#prerequisites)
   - [Running it](#running-it)
   - [Desktop builds](#desktop-builds)
+  - [Releasing](#releasing)
   - [Testing](#testing)
   - [Project layout](#project-layout)
   - [Notes on HTTP-only RomM servers](#notes-on-http-only-romm-servers)
@@ -52,6 +62,73 @@ by platform, and launches games in a WebView running Romm's web player.
 | ![Home screen: library stats across the top, with Recently added and Recommended for you shelves below](docs/screenshot1.png) |    ![Platforms grid, each tile showing a console icon and its game count](docs/screenshot4.png)    |
 |                                                          **Search**                                                           |                                          **Game details**                                          |
 |           ![Search screen with a query typed, platform filter chips, and matching cover art](docs/screenshot3.png)            | ![Game details for Apotris: cover art, Play button, summary, players, genres](docs/sceenshot2.png) |
+
+## Users guide
+
+### Server requirements
+
+RommStream plays games through RomM's
+[emulator streaming](https://docs.romm.app/5.3.0/using/emulator-streaming/):
+the game runs in a real emulator on your server and is streamed to the app
+over WebRTC. Your RomM server (5.3.0 or newer) therefore needs streaming
+set up before RommStream can launch anything:
+
+- **[RomM Broker](https://github.com/romm-streaming/romm-broker)**, which
+  takes launch, save and state commands from RomM, running inside
+- **[Webstation](https://github.com/linuxserver/docker-webstation)**, the
+  container that runs the emulators and serves the stream.
+
+Follow RomM's [setup guide](https://docs.romm.app/5.3.0/using/emulator-streaming/#setup).
+In short:
+
+1. Run the Webstation container with RomM Broker, with your ROM library
+   mounted read-only. RomM ships a reference `docker-compose.streaming.yml`
+   (amd64 only).
+2. Add a `streaming` block to RomM's `config.yml` with `enabled: true` and
+   one entry per container, mapping each platform to its emulator:
+
+   ```yaml
+   streaming:
+     enabled: true
+     containers:
+       - protocol: webstation
+         host: https://192.168.1.56:3010
+         subfolder: /streaming
+         label: Emulation station
+         platforms:
+           snes: retroarch
+           ps2:
+             emulator: pcsx2
+             memory_card_sync: true
+   ```
+
+3. Give RomM and the broker the same secret: `STREAMING_BROKER_SECRET` on
+   RomM, `BROKER_SECRET` on the container.
+
+Things to know:
+
+- The container's `host` must be **HTTPS** (the stream needs a secure
+  context). Use a reverse proxy or a self-signed certificate.
+- ROMs must be extracted; archives can't be streamed.
+- One container runs one game session at a time.
+
+### Getting the app
+
+Download the Android TV APK or the Linux AppImage / `.deb` / `.rpm` from the
+[Releases](https://github.com/tacocats/RomMStream/releases) page. Windows
+and macOS builds are not published yet; see [Desktop builds](#desktop-builds)
+to build them yourself.
+
+### Signing in
+
+Open the app and enter your RomM server's address and your RomM username and
+password. Once signed in, browse by platform, search, or pick from the home
+shelves, then press **Play** on a game to start a stream.
+
+If your RomM server uses plain HTTP, see
+[Notes on HTTP-only RomM servers](#notes-on-http-only-romm-servers). For a
+self-signed HTTPS server on desktop, see the couch notes under
+[Desktop builds](#desktop-builds).
 
 ## Developers
 
@@ -158,6 +235,40 @@ Using it from the couch:
   `ROMMSTREAM_ENABLE_VAAPI=1`. With no keyring running (Secret Service or
   KWallet), the saved sign-in is stored with a fixed key rather than
   encrypted.
+
+### Releasing
+
+Pushing a tag `vMAJOR.MINOR.PATCH` (e.g. `v0.1.0`) runs
+`.github/workflows/release.yml`: lint, typecheck and tests, then the signed
+Android TV APK and the Linux AppImage / `.deb` / `.rpm` (x64 and arm64),
+published as a GitHub Release with generated notes. A suffixed tag
+(`v0.2.0-rc.1`) is marked as a pre-release.
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+The version comes from the tag alone: the workflow sets `package.json`'s
+version (Linux package names) and passes `-PversionName` /
+`-PversionCode` to Gradle (`versionCode` = `MMmmpp`, so `0.1.0` → `100`;
+minor and patch stay below 100).
+
+The APK is signed with the release key from these repo secrets, and the
+workflow fails without them rather than shipping a debug-signed APK:
+
+| Secret                      | Value                                    |
+| --------------------------- | ---------------------------------------- |
+| `ANDROID_KEYSTORE_BASE64`   | `base64 -w0 rommstream-release.keystore` |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore password                        |
+| `ANDROID_KEY_ALIAS`         | key alias                                |
+| `ANDROID_KEY_PASSWORD`      | key password                             |
+
+Create the keystore once with
+`keytool -genkeypair -v -keystore rommstream-release.keystore -alias rommstream -keyalg RSA -keysize 2048 -validity 10000`
+and back it up outside the repo: Android only installs updates signed with
+the same key. Locally, `assembleRelease` uses the debug key unless
+`ROMMSTREAM_KEYSTORE` (and the matching `ROMMSTREAM_*` password/alias
+variables) are set.
 
 ### Testing
 
