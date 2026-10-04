@@ -9,24 +9,24 @@ import {
 } from '../settingsStore';
 
 describe('persisted settings', () => {
-  it('defaults to /api/login and in-browser play on', async () => {
+  it('defaults to /api/login and in-browser play off', async () => {
     expect(DEFAULT_LOGIN_PATH).toBe('/api/login');
-    expect(DEFAULT_IN_BROWSER_PLAY_ENABLED).toBe(true);
+    expect(DEFAULT_IN_BROWSER_PLAY_ENABLED).toBe(false);
     await expect(getLoginPath()).resolves.toBe('/api/login');
-    await expect(getInBrowserPlayEnabled()).resolves.toBe(true);
+    await expect(getInBrowserPlayEnabled()).resolves.toBe(false);
   });
 
   it('round-trips in-browser play under a versioned key', async () => {
-    await setInBrowserPlayEnabled(false);
+    await setInBrowserPlayEnabled(true);
 
     expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      'rommstream.inBrowserPlayEnabled.v1',
-      'false',
+      'rommstream.inBrowserPlayEnabled.v2',
+      'true',
     );
-    await expect(getInBrowserPlayEnabled()).resolves.toBe(false);
-
-    await setInBrowserPlayEnabled(true);
     await expect(getInBrowserPlayEnabled()).resolves.toBe(true);
+
+    await setInBrowserPlayEnabled(false);
+    await expect(getInBrowserPlayEnabled()).resolves.toBe(false);
   });
 
   it('round-trips the login path under a versioned key', async () => {
@@ -43,5 +43,11 @@ describe('persisted settings', () => {
     await AsyncStorage.setItem('rommstream.loginPath.v1', '/old/login');
 
     await expect(getLoginPath()).resolves.toBe('/api/login');
+  });
+
+  it('ignores in-browser play saved on before it defaulted off', async () => {
+    await AsyncStorage.setItem('rommstream.inBrowserPlayEnabled.v1', 'true');
+
+    await expect(getInBrowserPlayEnabled()).resolves.toBe(false);
   });
 });

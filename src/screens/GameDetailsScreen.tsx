@@ -22,6 +22,7 @@ import { PlayIcon, VerifiedIcon } from '../components/icons';
 import { platformLabelFor, resolveCoverUrl } from '../components/RomTile';
 import { ContentNavigation, RootStackParamList } from '../navigation/types';
 import {
+  DEFAULT_IN_BROWSER_PLAY_ENABLED,
   getInBrowserPlayEnabled,
   getLoginPath,
 } from '../settings/settingsStore';
@@ -92,7 +93,9 @@ export function GameDetailsScreen({ route, navigation }: Props) {
   const [playPath, setPlayPath] = useState<string | null | undefined>(
     undefined,
   );
-  const [inBrowserPlayEnabled, setInBrowserPlayEnabled] = useState(true);
+  const [inBrowserPlayEnabled, setInBrowserPlayEnabled] = useState(
+    DEFAULT_IN_BROWSER_PLAY_ENABLED,
+  );
   // Non-null while a stream is being claimed and booted; `phase` is the
   // server's progress while it unpacks a large title.
   const [launching, setLaunching] = useState<{ phase: string | null } | null>(
@@ -250,7 +253,7 @@ export function GameDetailsScreen({ route, navigation }: Props) {
                     ? `RomM has no in-browser player for ${
                         platformLabel || 'this platform'
                       }, and your server has no streaming container for it.`
-                    : 'In-Browser Play is turned off in Settings, and your server has no streaming container for this platform.'}
+                    : 'Your server has no streaming container for this platform.'}
                 </Text>
               </View>
             ) : (

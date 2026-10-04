@@ -3,9 +3,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Keys are versioned: bumping one discards a saved value whose meaning or
 // correct default changed, so it can't override a fix.
 const LOGIN_PATH_KEY = 'rommstream.loginPath.v2';
-const IN_BROWSER_PLAY_ENABLED_KEY = 'rommstream.inBrowserPlayEnabled.v1';
+const IN_BROWSER_PLAY_ENABLED_KEY = 'rommstream.inBrowserPlayEnabled.v2';
 
-export const DEFAULT_IN_BROWSER_PLAY_ENABLED = true;
+// Off: RommStream only launches games through server streaming. The
+// in-browser players (EmulatorJS, js-dos, PICO-8, Ruffle...) are kept behind
+// this flag, with no Settings toggle, in case they come back.
+export const DEFAULT_IN_BROWSER_PLAY_ENABLED = false;
 
 // The session-login endpoint the WebView calls (HTTP Basic) to pick up the
 // session cookie RomM's web frontend needs. Verified against RomM's backend

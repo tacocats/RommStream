@@ -380,7 +380,7 @@ src/
   input/          Remote/controller keys; web/ has the desktop focus + gamepad layer
   navigation/     React Navigation stack
   screens/        Login, Main (Home/Platforms/Search tabs), Roms, Player (WebView), Settings
-  settings/       On-device settings (login path, in-browser play) via AsyncStorage
+  settings/       On-device settings (login path; in-browser play flag, off) via AsyncStorage
   testUtils/      Helpers shared by the Jest tests
   theme/          Shared color tokens
 e2e/              Detox end-to-end tests (Android TV)

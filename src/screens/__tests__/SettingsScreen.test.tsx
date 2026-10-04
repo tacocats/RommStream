@@ -19,39 +19,38 @@ describe('SettingsScreen', () => {
   it('starts from the defaults when nothing is stored', async () => {
     await renderScreen();
 
-    expect(
-      screen.getByTestId('settings-in-browser-play').props.accessibilityState
-        .checked,
-    ).toBe(true);
     expect(screen.getByTestId('settings-login-path')).toHaveDisplayValue(
       '/api/login',
     );
   });
 
-  it('loads the stored values into the inputs', async () => {
-    await setInBrowserPlayEnabled(false);
+  it('loads the stored login path into the input', async () => {
     await setLoginPath('/custom/login');
 
     await renderScreen();
 
     expect(await screen.findByDisplayValue('/custom/login')).toBeOnTheScreen();
-    expect(
-      screen.getByTestId('settings-in-browser-play').props.accessibilityState
-        .checked,
-    ).toBe(false);
   });
 
-  it('saves the toggle and the trimmed login path', async () => {
+  it('has no in-browser play toggle and leaves that setting alone', async () => {
+    await setInBrowserPlayEnabled(true);
     await renderScreen();
 
-    await fireEvent.press(screen.getByTestId('settings-in-browser-play'));
+    expect(screen.queryByTestId('settings-in-browser-play')).toBeNull();
+    await fireEvent.press(screen.getByTestId('settings-save'));
+
+    await expect(getInBrowserPlayEnabled()).resolves.toBe(true);
+  });
+
+  it('saves the trimmed login path', async () => {
+    await renderScreen();
+
     await fireEvent.changeText(
       screen.getByTestId('settings-login-path'),
       '  /custom/login  ',
     );
     await fireEvent.press(screen.getByTestId('settings-save'));
 
-    await expect(getInBrowserPlayEnabled()).resolves.toBe(false);
     await expect(getLoginPath()).resolves.toBe('/custom/login');
   });
 

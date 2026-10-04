@@ -143,7 +143,8 @@ describe('GameDetailsScreen', () => {
     expect(screen.queryByTestId('game-details-cover')).toBeNull();
   });
 
-  it('launches the emulator player with the Play button', async () => {
+  it('launches the in-browser player with the Play button when it is enabled', async () => {
+    await setInBrowserPlayEnabled(true);
     mockedGetRom.mockResolvedValueOnce(ROM);
     const { navigation, rendered } = renderScreen();
     await rendered;
@@ -312,6 +313,7 @@ describe('GameDetailsScreen', () => {
   });
 
   it('hides Play and explains why when nothing can launch the rom', async () => {
+    await setInBrowserPlayEnabled(true);
     mockedGetRom.mockResolvedValueOnce({ ...ROM, platform_slug: 'switch' });
     await renderScreen().rendered;
 
@@ -322,19 +324,20 @@ describe('GameDetailsScreen', () => {
     ).toBeOnTheScreen();
   });
 
-  it('points at the setting when in-browser play is what is missing', async () => {
-    await setInBrowserPlayEnabled(false);
+  it('needs a streaming container by default, with in-browser play off', async () => {
     mockedGetRom.mockResolvedValueOnce(ROM);
     await renderScreen().rendered;
 
     expect(await screen.findByTestId('no-player-notice')).toBeOnTheScreen();
+    expect(screen.queryByTestId('play-button')).toBeNull();
     expect(
-      screen.getByText(/In-Browser Play is turned off in Settings/),
+      screen.getByText(
+        'Your server has no streaming container for this platform.',
+      ),
     ).toBeOnTheScreen();
   });
 
   it('keeps Play when the platform has a streaming container', async () => {
-    await setInBrowserPlayEnabled(false);
     mockedGetStreamingConfig.mockResolvedValue({
       enabled: true,
       containers: [{ platform: 'psx', container: 'romm-psx' }],

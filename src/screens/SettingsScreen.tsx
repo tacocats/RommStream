@@ -2,14 +2,10 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { FocusablePressable } from '../components/FocusablePressable';
-import { Toggle } from '../components/Toggle';
 import { RootStackParamList } from '../navigation/types';
 import {
-  DEFAULT_IN_BROWSER_PLAY_ENABLED,
   DEFAULT_LOGIN_PATH,
-  getInBrowserPlayEnabled,
   getLoginPath,
-  setInBrowserPlayEnabled,
   setLoginPath,
 } from '../settings/settingsStore';
 import { colors } from '../theme/colors';
@@ -18,18 +14,13 @@ import { DesktopSettingsSection } from './DesktopSettingsSection';
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
 export function SettingsScreen({ navigation }: Props) {
-  const [inBrowserPlayEnabled, setInBrowserPlayEnabledInput] = useState(
-    DEFAULT_IN_BROWSER_PLAY_ENABLED,
-  );
   const [loginPath, setLoginPathInput] = useState(DEFAULT_LOGIN_PATH);
 
   useEffect(() => {
-    getInBrowserPlayEnabled().then(setInBrowserPlayEnabledInput);
     getLoginPath().then(setLoginPathInput);
   }, []);
 
   const handleSave = async () => {
-    await setInBrowserPlayEnabled(inBrowserPlayEnabled);
     await setLoginPath(loginPath.trim() || DEFAULT_LOGIN_PATH);
     navigation.goBack();
   };
@@ -38,22 +29,7 @@ export function SettingsScreen({ navigation }: Props) {
     <View style={styles.container}>
       <Text style={styles.title}>Settings</Text>
 
-      <View style={styles.toggleRow}>
-        <View style={styles.toggleTextWrap}>
-          <Text style={styles.label}>In-Browser Play</Text>
-          <Text style={styles.help}>
-            Enable in-browser retro emulators (EmulatorJS, js-dos, MS-DOS,
-            PICO-8, Ruffle)
-          </Text>
-        </View>
-        <Toggle
-          value={inBrowserPlayEnabled}
-          onValueChange={() => setInBrowserPlayEnabledInput(v => !v)}
-          testID="settings-in-browser-play"
-        />
-      </View>
-
-      <Text style={[styles.label, styles.secondField]}>Login path</Text>
+      <Text style={styles.label}>Login path</Text>
       <Text style={styles.help}>
         Endpoint the web player signs in against (HTTP Basic) to pick up its
         session cookie. Only change this if the game screen reports the login
@@ -89,16 +65,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginBottom: 24,
   },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 20,
-    maxWidth: 620,
-    marginBottom: 12,
-  },
-  toggleTextWrap: { flex: 1 },
   label: { color: colors.textPrimary, fontSize: 16, marginBottom: 6 },
-  secondField: { marginTop: 24 },
   help: {
     color: colors.textMuted,
     fontSize: 13,
