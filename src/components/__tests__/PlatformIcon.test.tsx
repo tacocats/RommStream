@@ -184,7 +184,11 @@ describe('PlatformIcon', () => {
       </>,
     );
 
-    expect(await screen.findAllByTestId('svg-xml')).toHaveLength(2);
+    // Both icons share one fetch but set their state separately, so they can
+    // land in different commits: findAll would settle on the first alone.
+    await waitFor(() =>
+      expect(screen.getAllByTestId('svg-xml')).toHaveLength(2),
+    );
     expect(fetchMock()).toHaveBeenCalledTimes(1);
     const stored = await AsyncStorage.getItem(`${KEY_PREFIX}gb`);
     expect(JSON.parse(String(stored))).toEqual({
