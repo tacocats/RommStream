@@ -8,6 +8,8 @@ import { TurboModuleRegistry } from 'react-native';
  *
  * `get` (rather than `getEnforcing`) so this resolves to null on platforms
  * that don't ship the module, letting the JS utility degrade to a no-op.
+ *
+ * @public Codegen reads the exported `Spec`; nothing imports it.
  */
 export interface Spec extends TurboModule {
   setInterceptedKeys(keys: Array<string>): void;

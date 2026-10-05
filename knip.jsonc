@@ -1,0 +1,24 @@
+// Finds unused files, dependencies and exports: `npm run knip`.
+//
+// Knip's plugins pick up most entry points from the tools' own configs (Jest,
+// Vite, Playwright, Metro, ESLint, lefthook, the GitHub workflows), and
+// resolve `.web.*` platform files. Listed here is what they can't see.
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  "entry": [
+    // Electron main process and preloads, bundled by scripts/build-electron.mjs.
+    "electron/{main,preload,guestPreload}.ts",
+    "scripts/*.mjs",
+    // Vite's alias for `react-native` in the web build.
+    "web/shims/react-native.tsx",
+    // Detox: its config, and the Jest config it runs e2e/ with.
+    ".detoxrc.js",
+    "e2e/jest.config.js",
+    "e2e/.eslintrc.js"
+  ],
+  "project": ["**/*.{js,mjs,ts,tsx}"],
+  "ignoreDependencies": [
+    // Pulled in by Babel's transforms of the RN preset, never imported.
+    "@babel/runtime"
+  ]
+}
