@@ -21,6 +21,11 @@ export const colors = {
   accent: '#7C5CFF',
   accentSoft: 'rgba(124, 92, 255, 0.18)', // active nav chip background
   accentGlow: 'rgba(124, 92, 255, 0.35)', // outer focus-ring glow
+  accentLight: '#A78BFA', // primary button and links on the sign-in screens
+  accentLightGlow: 'rgba(167, 139, 250, 0.22)',
+
+  // Highlight (wordmark, pairing code)
+  highlight: '#FFD866',
 
   // Overlays
   scrim: 'rgba(6, 6, 10, 0.92)', // bottom-of-tile gradient start, for title legibility

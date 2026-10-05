@@ -29,7 +29,7 @@ export function CoverPlaceholder({ seed, testID }: Props) {
 
   return (
     <View style={StyleSheet.absoluteFill} testID={testID}>
-      <Svg style={StyleSheet.absoluteFill}>
+      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
         <Defs>
           <LinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
             <Stop offset="0" stopColor={gradient.from} />

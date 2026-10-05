@@ -91,10 +91,13 @@ describe('LoginScreen', () => {
       'ABCD-2345',
     );
     expect(screen.getByTestId('pairing-url')).toHaveTextContent(
-      PROMPT.verificationUrl,
+      'romm.test/pair/device',
+    );
+    expect(screen.getByTestId('pairing-expiry')).toHaveTextContent(
+      'Expires in 10:00',
     );
     expect(screen.getByTestId('pairing-qr')).toBeOnTheScreen();
-    expect(screen.getByText('Waiting for approval…')).toBeOnTheScreen();
+    expect(screen.getByText('Waiting for approval')).toBeOnTheScreen();
   });
 
   it('starts pairing from the server field', async () => {

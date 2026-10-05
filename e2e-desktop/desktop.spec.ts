@@ -8,7 +8,7 @@ import {
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { MockRomm, ROM, startMockRomm, USER_CODE } from './mockRommServer';
+import { MockRomm, ROM, startMockRomm } from './mockRommServer';
 
 /**
  * Smoke test of the desktop build (`npm run build:desktop` first): sign in,
@@ -117,7 +117,7 @@ test('pairs, browses and plays with the keyboard alone', async () => {
   // The TV shows the code and link; nothing happens until it's approved.
   await expect(byTestId('pairing-user-code')).toHaveText('ABCD-2345');
   await expect(byTestId('pairing-url')).toHaveText(
-    `${romm.url}/pair/device?user_code=${USER_CODE}`,
+    `${romm.url.replace(/^https?:\/\//, '')}/pair/device`,
   );
   await expect(byTestId('pairing-qr')).toBeVisible();
   await expect.poll(focusedTestId).toBe('pairing-cancel');

@@ -15,6 +15,10 @@ import { AuthValue, createAuthValue } from '../../testUtils/mockAuth';
 import { createScreenProps } from '../../testUtils/navigation';
 import { MainScreen } from '../MainScreen';
 
+jest.mock('../../components/popupAnchor', () => ({
+  anchorBeside: async () => ({ left: 0, bottom: 0 }),
+}));
+
 jest.mock('../../auth/AuthContext');
 jest.mock('../../api/rommClient');
 jest.mock('../../components/PlatformIcon', () => ({
@@ -80,7 +84,8 @@ describe('MainScreen', () => {
     await fireEvent.press(screen.getByTestId('settings-button'));
     expect(navigation.navigate).toHaveBeenCalledWith('Settings');
 
-    await fireEvent.press(screen.getByTestId('sign-out-button'));
+    await fireEvent.press(screen.getByTestId('account-button'));
+    await fireEvent.press(await screen.findByTestId('account-menu-sign-out'));
     expect(auth.signOut).toHaveBeenCalledTimes(1);
   });
 

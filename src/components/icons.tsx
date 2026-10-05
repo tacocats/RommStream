@@ -175,3 +175,22 @@ export function LogoMarkIcon({ color, size = 18 }: IconProps) {
     </Svg>
   );
 }
+
+export function ServerIcon({ color, size = 18 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M5 3.5h14a2 2 0 0 1 2 2V9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2ZM5 13h14a2 2 0 0 1 2 2v3.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V15a2 2 0 0 1 2-2Z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M7 7.25h.01M7 16.75h.01"
+        stroke={color}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}

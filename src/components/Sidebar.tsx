@@ -1,14 +1,19 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, focusRing } from '../theme/colors';
 import { FocusablePressable } from './FocusablePressable';
 import { GamepadIcon, HomeIcon, SettingsIcon } from './icons';
+import { PopupMenu, PopupMenuAnchor, PopupMenuItem } from './PopupMenu';
+import { anchorBeside } from './popupAnchor';
 
 export type MainTab = 'Home' | 'Platforms' | 'Search';
 
 type NavTab = 'Home' | 'Platforms';
 
 const NAV_TABS: NavTab[] = ['Home', 'Platforms'];
+
+/** Gap between the avatar and the account menu that pops out beside it. */
+const MENU_OFFSET = 12;
 
 const ICONS: Record<NavTab, typeof HomeIcon> = {
   Home: HomeIcon,
@@ -36,6 +41,23 @@ export function Sidebar({
   onSignOut,
 }: Props) {
   const initial = username.trim().charAt(0).toUpperCase() || '?';
+  const avatarRef = useRef<View>(null);
+  const [menuAnchor, setMenuAnchor] = useState<PopupMenuAnchor | null>(null);
+
+  const accountItems: PopupMenuItem[] = [
+    {
+      id: 'sign-out',
+      label: 'Sign Out',
+      onSelect: onSignOut,
+      destructive: true,
+    },
+  ];
+
+  // Measured on open rather than on layout so the menu tracks window resizes
+  // (desktop).
+  const openAccountMenu = async () => {
+    setMenuAnchor(await anchorBeside(avatarRef.current, MENU_OFFSET));
+  };
 
   return (
     <View style={styles.bar} testID="sidebar">
@@ -74,15 +96,25 @@ export function Sidebar({
           <SettingsIcon color={colors.textMuted} size={22} />
         </FocusablePressable>
         <FocusablePressable
+          ref={avatarRef}
           style={styles.avatar}
           focusedStyle={styles.avatarFocused}
-          accessibilityLabel="Sign Out"
-          onPress={onSignOut}
-          testID="sign-out-button"
+          accessibilityLabel={`Account: ${username}`}
+          accessibilityState={{ expanded: menuAnchor !== null }}
+          onPress={openAccountMenu}
+          testID="account-button"
         >
           <Text style={styles.avatarText}>{initial}</Text>
         </FocusablePressable>
       </View>
+
+      <PopupMenu
+        visible={menuAnchor !== null}
+        anchor={menuAnchor}
+        items={accountItems}
+        onClose={() => setMenuAnchor(null)}
+        testID="account-menu"
+      />
     </View>
   );
 }

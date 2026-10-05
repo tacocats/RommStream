@@ -4,11 +4,13 @@ import {
   PressableProps,
   StyleProp,
   StyleSheet,
+  View,
   ViewStyle,
 } from 'react-native';
 import { colors, focusRing } from '../theme/colors';
 
 interface Props extends PressableProps {
+  ref?: React.Ref<View>;
   style?: StyleProp<ViewStyle>;
   focusedStyle?: StyleProp<ViewStyle>;
 }
