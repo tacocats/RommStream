@@ -67,6 +67,7 @@
     "jest-environment-jsdom": "^29.7.0",
     "lefthook": "^2.1.14",
     "prettier": "2.8.8",
+    "socket.io": "^4.8.4",
     "test-renderer": "^1.2.0",
     "typescript": "^5.8.3",
     "vite": "^8.3.1"

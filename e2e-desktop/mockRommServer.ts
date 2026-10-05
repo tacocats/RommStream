@@ -1,12 +1,13 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { Server as SocketServer } from 'socket.io';
 
 /**
  * Just enough of a RomM server for the desktop smoke test: token sign-in,
- * one platform with one game, and a web player page with a Play button and
- * a canvas. It deliberately sends no CORS headers, as a real RomM doesn't
- * for other origins, so the test proves the app's API calls go through the
- * main process.
+ * one platform with one game, and a streaming container for it whose room
+ * page wraps a stand-in for selkies-core. It deliberately sends no CORS
+ * headers, as a real RomM doesn't for other origins, so the test proves the
+ * app's API calls go through the main process.
  */
 
 export const ROM = {
@@ -28,30 +29,37 @@ const PLATFORM = {
   rom_count: 1,
 };
 
-// The player page: RomM's lobby Play button, which reveals the game canvas.
-const PLAYER_PAGE = `<!doctype html>
+const CONTAINER = 'romm-gb';
+const ROOM_PATH = `/stream/${CONTAINER}/`;
+
+// The streaming room: RomM's player page wrapping selkies-core in
+// #session-frame, where the app puts key focus. Keys the game sees are
+// recorded on the room's window.
+const ROOM_PAGE = `<!doctype html>
 <html><body style="margin:0;background:#000">
-<button class="play-button">Play</button>
-<canvas class="ejs_canvas" width="320" height="240" style="display:none"></canvas>
-<script>
-  document.querySelector('.play-button').addEventListener('click', function () {
-    this.style.display = 'none';
-    document.querySelector('canvas').style.display = 'block';
-  });
-  window.keysSeen = [];
-  window.addEventListener('keydown', function (e) { window.keysSeen.push(e.key); });
-</script>
+<iframe id="session-frame" style="border:0;width:100%;height:100vh" srcdoc="
+  <canvas width=320 height=240></canvas>
+  <script>
+    window.addEventListener('keydown', function (e) { parent.keysSeen.push(e.key); });
+  </script>
+"></iframe>
+<script>window.keysSeen = [];</script>
 </body></html>`;
 
 export interface MockRomm {
   url: string;
   /** "METHOD /path" of every request, in order. */
   requests: string[];
+  /** The room URL a stream launch hands the app. */
+  roomUrl: string;
+  /** Cookie headers of socket handshakes, in order. */
+  socketCookies: Array<string | undefined>;
   close(): Promise<void>;
 }
 
 export async function startMockRomm(): Promise<MockRomm> {
   const requests: string[] = [];
+  const socketCookies: Array<string | undefined> = [];
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -100,27 +108,66 @@ export async function startMockRomm(): Promise<MockRomm> {
       case 'GET /api/config':
         return json({});
       case 'GET /api/streaming/config':
-        return json({ enabled: false, containers: [] });
+        return json({
+          enabled: true,
+          containers: [{ platform: 'gb', container: CONTAINER }],
+        });
+      case 'GET /api/users/me':
+        return json({ detail: 'Not authenticated' }, 401);
+      case 'POST /api/streaming/sessions':
+        // The room URL follows over the socket, as RomM's broker sends it
+        // once the emulator is up.
+        setTimeout(() =>
+          io.emit('streaming:launch-ready', {
+            platform: 'gb',
+            container: CONTAINER,
+            host: ROOM_PATH,
+          }),
+        );
+        return json(
+          {
+            platform: 'gb',
+            container: CONTAINER,
+            label: 'Game Boy',
+            rom_name: ROM.name,
+            claimed_at: new Date().toISOString(),
+          },
+          202,
+        );
+      case 'POST /api/streaming/sessions/gb/heartbeat':
+        return json({ status: 'active', platform: 'gb' });
+      case 'DELETE /api/streaming/sessions/gb':
+        return json({});
       case 'POST /api/login':
         res.writeHead(200, {
           'Content-Type': 'application/json',
           'Set-Cookie': 'romm_session=session; Path=/; HttpOnly',
         });
         return res.end('{}');
-      case `GET /rom/${ROM.id}/ejs`:
+      case `GET ${ROOM_PATH}`:
         res.writeHead(200, { 'Content-Type': 'text/html' });
-        return res.end(PLAYER_PAGE);
+        return res.end(ROOM_PAGE);
       default:
         res.writeHead(404);
         return res.end();
     }
   });
 
+  // RomM's socket, which carries streaming launch events. Like RomM, it
+  // knows the user only from the login session cookie on the handshake.
+  const io = new SocketServer(server, { path: '/ws/socket.io/' });
+  io.on('connection', socket => {
+    socketCookies.push(socket.handshake.headers.cookie);
+  });
+
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${port}`;
   return {
-    url: `http://127.0.0.1:${port}`,
+    url,
     requests,
-    close: () => new Promise(resolve => server.close(() => resolve())),
+    roomUrl: `${url}${ROOM_PATH}`,
+    socketCookies,
+    close: () => new Promise(resolve => io.close(() => resolve())),
   };
 }

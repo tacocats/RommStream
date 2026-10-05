@@ -82,7 +82,7 @@ async function pressInGame(keyCode: string): Promise<void> {
   }, keyCode);
 }
 
-/** Keys the mock player page received (see mockRommServer.ts). */
+/** Keys the mock streaming room received (see mockRommServer.ts). */
 async function gameKeysSeen(): Promise<string[]> {
   return app.evaluate(async ({ webContents }) => {
     const guest = webContents
@@ -133,15 +133,21 @@ test('signs in, browses and plays with the keyboard alone', async () => {
   await page.keyboard.press('Escape');
   await expect(byTestId('home-tab')).toBeVisible();
 
-  // Launch the game: the webview signs in to RomM and presses Play.
+  // Launch the game: the app signs in to RomM for its socket, claims a
+  // streaming container and opens the room it reports.
   await expect.poll(focusedTestId).toBe(tile);
   await page.keyboard.press('Enter');
   await expect.poll(focusedTestId).toBe('play-button');
   // Play works before the route resolves, but lands on the rom page.
   await expect(byTestId('game-details-loading')).toHaveCount(0);
   await page.keyboard.press('Enter');
-  await expect.poll(playerGuestUrl).toBe(`${romm.url}/rom/${ROM.id}/ejs`);
+  await expect.poll(playerGuestUrl).toBe(romm.roomUrl);
   expect(romm.requests).toContain('POST /api/login');
+  expect(romm.requests).toContain('POST /api/streaming/sessions');
+  // The main process put the login cookie on the socket handshake.
+  expect(romm.socketCookies).toEqual([
+    expect.stringContaining('romm_session=session'),
+  ]);
   await expect
     .poll(() => page.evaluate(() => document.activeElement?.tagName))
     .toBe('WEBVIEW');
@@ -152,10 +158,24 @@ test('signs in, browses and plays with the keyboard alone', async () => {
   await expect(byTestId('player-menu')).toBeVisible();
   expect(await gameKeysSeen()).toEqual([]);
   await expect.poll(focusedTestId).toBe('player-menu-resume');
-  await page.keyboard.press('ArrowDown');
-  await expect.poll(focusedTestId).toBe('player-menu-exit');
+  // Down past the stream's own actions to Exit.
+  for (const id of [
+    'player-menu-action-selkies-fullscreen',
+    'player-menu-action-selkies-aspect-widescreen',
+    'player-menu-action-selkies-aspect-standard',
+    'player-menu-action-selkies-aspect-reset',
+    'player-menu-action-selkies-gamepad-capture',
+    'player-menu-exit',
+  ]) {
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(focusedTestId).toBe(id);
+  }
   await page.keyboard.press('Enter');
   await expect(byTestId('game-details-screen')).toBeVisible();
+  // Leaving the player releases the container.
+  await expect
+    .poll(() => romm.requests)
+    .toContain('DELETE /api/streaming/sessions/gb');
 });
 
 test('remembers the sign-in across restarts', async () => {

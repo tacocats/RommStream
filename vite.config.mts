@@ -30,13 +30,15 @@ const extensions = [
 
 // Production only: the dev server injects an inline React Refresh preamble
 // that a strict script-src would block. Remote hosts are only ever reached
-// through the main process (see electron/rommFetch.ts) or an image tag.
+// through the main process (see electron/rommFetch.ts), an image tag, or
+// RomM's socket for streaming launch events (src/api/streamingSession.ts),
+// which can't be proxied and lives on whatever server the user signs in to.
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   'img-src * data: blob:',
-  "connect-src 'self'",
+  "connect-src 'self' ws: wss:",
   "font-src 'self' data:",
 ].join('; ');
 
