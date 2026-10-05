@@ -114,16 +114,29 @@ export function inlineSvgClasses(svg: string): string {
     }
   }
 
-  return svg
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/i, '')
-    .replace(/class="([^"]+)"/g, (match, classNames: string) => {
+  return stripStyleBlocks(svg).replace(
+    /class="([^"]+)"/g,
+    (match, classNames: string) => {
       const declarations = classNames
         .split(/\s+/)
         .map((name: string) => declarationsByClass.get(name))
         .filter((d: string | undefined): d is string => !!d)
         .join(';');
       return declarations ? `${match} style="${declarations}"` : match;
-    });
+    },
+  );
+}
+
+// Repeat until nothing changes: removing one block can splice its
+// neighbours into a new one (e.g. "<sty<style></style>le>").
+function stripStyleBlocks(svg: string): string {
+  let previous: string;
+  let current = svg;
+  do {
+    previous = current;
+    current = current.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  } while (current !== previous);
+  return current;
 }
 
 // A missing asset doesn't always 404: RomM's SPA fallback can answer with

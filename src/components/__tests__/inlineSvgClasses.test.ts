@@ -19,6 +19,15 @@ describe('inlineSvgClasses', () => {
     );
   });
 
+  it('removes every <style> block, including ones spliced together by removal', () => {
+    const svg =
+      '<svg><style>.a { fill: red }</style>' +
+      '<sty<style></style>le>.b { fill: blue }</style>' +
+      '<path class="a"/></svg>';
+
+    expect(inlineSvgClasses(svg)).not.toContain('<style');
+  });
+
   it('handles comma-separated selectors and multiple classes on one element', () => {
     const svg =
       '<svg><style>.a, .b { fill: red } .c { stroke: blue }</style>' +
