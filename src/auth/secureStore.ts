@@ -3,20 +3,25 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('secureStore');
 
-// Two separate keychain entries: one for the RomM credentials (needed again
-// later to authenticate the WebView session), one for the current tokens.
+// Two separate keychain entries: where the app is signed in (server and
+// account name), and the device's client API token.
 const CREDENTIALS_SERVICE = 'com.rommstream.credentials';
 const TOKENS_SERVICE = 'com.rommstream.tokens';
 
 export interface StoredCredentials {
   serverUrl: string;
+  /** Only for display. */
   username: string;
-  password: string;
+  /**
+   * 'pairing' for a paired device. Missing on sign-ins saved by older
+   * releases (username and password), which are discarded.
+   */
+  authMethod?: 'pairing';
 }
 
 export interface StoredTokens {
+  /** The device's client API token. */
   accessToken: string;
-  refreshToken: string;
 }
 
 export async function saveCredentials(creds: StoredCredentials): Promise<void> {

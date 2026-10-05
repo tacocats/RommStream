@@ -10,9 +10,9 @@ import type {
  * instead — the app code keeps calling plain fetch() and doesn't know.
  *
  * Only what the app actually sends is supported: string or URLSearchParams
- * bodies, and `credentials: 'include'` for the cookie-session requests
- * (RomM's login and socket) that need the main process's cookie store. Anything else, and same-origin requests, go to the browser's own
- * fetch.
+ * bodies, and `credentials: 'include'` for requests that need the main
+ * process's cookie store. Anything else, and same-origin requests, go to the
+ * browser's own fetch.
  */
 
 const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);

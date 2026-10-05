@@ -5,7 +5,7 @@ import { createLogger } from '../utils/logger';
  * Web (Electron) counterpart of secureStore.ts. The main process encrypts
  * each entry with the OS keychain via Electron's safeStorage (see
  * electron/secureStore.ts). The same two entries as the native build are kept:
- * credentials (needed again later to sign the web player in) and tokens.
+ * where the app is signed in, and the device's client API token.
  *
  * Outside Electron (`npm run dev:web` in a browser) there's no keychain to
  * reach, so values fall back to localStorage — fine for development against
@@ -19,13 +19,18 @@ const TOKENS_SERVICE = 'com.rommstream.tokens';
 
 export interface StoredCredentials {
   serverUrl: string;
+  /** Only for display. */
   username: string;
-  password: string;
+  /**
+   * 'pairing' for a paired device. Missing on sign-ins saved by older
+   * releases (username and password), which are discarded.
+   */
+  authMethod?: 'pairing';
 }
 
 export interface StoredTokens {
+  /** The device's client API token. */
   accessToken: string;
-  refreshToken: string;
 }
 
 let warnedAboutFallback = false;

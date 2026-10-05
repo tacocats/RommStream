@@ -1,9 +1,8 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { Server as SocketServer } from 'socket.io';
 
 /**
- * Just enough of a RomM server for the desktop smoke test: token sign-in,
+ * Just enough of a RomM server for the desktop smoke test: device pairing,
  * one platform with one game, and a streaming container for it whose room
  * page wraps a stand-in for selkies-core. It deliberately sends no CORS
  * headers, as a real RomM doesn't for other origins, so the test proves the
@@ -29,6 +28,11 @@ const PLATFORM = {
   rom_count: 1,
 };
 
+/** Device pairing: the code to approve, and the token approval issues. */
+export const USER_CODE = 'ABCD2345';
+export const CLIENT_TOKEN = `rmm_${'0'.repeat(64)}`;
+const DEVICE_CODE = 'device-secret';
+
 const CONTAINER = 'romm-gb';
 const ROOM_PATH = `/stream/${CONTAINER}/`;
 
@@ -52,14 +56,26 @@ export interface MockRomm {
   requests: string[];
   /** The room URL a stream launch hands the app. */
   roomUrl: string;
-  /** Cookie headers of socket handshakes, in order. */
-  socketCookies: Array<string | undefined>;
+  /** The init body of the latest device pairing. */
+  pairingRequest: Record<string, unknown> | null;
+  /** Approve the pending device pairing, as its owner would in RomM. */
+  approveDevice(): void;
   close(): Promise<void>;
 }
 
 export async function startMockRomm(): Promise<MockRomm> {
   const requests: string[] = [];
-  const socketCookies: Array<string | undefined> = [];
+  // The launch is up from the second status poll on.
+  let statusPolls = 0;
+  let pairingRequest: Record<string, unknown> | null = null;
+  let deviceApproved = false;
+
+  const readJson = (req: http.IncomingMessage) =>
+    new Promise<Record<string, unknown>>(resolve => {
+      let body = '';
+      req.on('data', chunk => (body += chunk));
+      req.on('end', () => resolve(JSON.parse(body)));
+    });
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -72,14 +88,6 @@ export async function startMockRomm(): Promise<MockRomm> {
 
     const route = `${req.method} ${url.pathname}`;
     switch (route) {
-      case 'POST /api/token':
-        return json({
-          access_token: 'access',
-          refresh_token: 'refresh',
-          token_type: 'bearer',
-          expires: 3600,
-          refresh_expires: 86400,
-        });
       case 'GET /api/platforms':
         return json([PLATFORM]);
       case 'GET /api/roms':
@@ -100,11 +108,7 @@ export async function startMockRomm(): Promise<MockRomm> {
       case 'GET /api/collections/virtual':
         return json([]);
       case 'GET /api/heartbeat':
-        res.writeHead(200, {
-          'Content-Type': 'application/json',
-          'Set-Cookie': 'romm_csrftoken=csrf; Path=/',
-        });
-        return res.end(JSON.stringify({ EMULATION: {} }));
+        return json({ EMULATION: {} });
       case 'GET /api/config':
         return json({});
       case 'GET /api/streaming/config':
@@ -113,17 +117,48 @@ export async function startMockRomm(): Promise<MockRomm> {
           containers: [{ platform: 'gb', container: CONTAINER }],
         });
       case 'GET /api/users/me':
-        return json({ detail: 'Not authenticated' }, 401);
+        return req.headers.authorization === `Bearer ${CLIENT_TOKEN}`
+          ? json({ id: 1, username: 'player' })
+          : json({ detail: 'Not authenticated' }, 401);
+      case 'POST /api/auth/device/init':
+        readJson(req).then(body => {
+          pairingRequest = body;
+          json(
+            {
+              device_code: DEVICE_CODE,
+              user_code: USER_CODE,
+              verification_path: '/pair/device',
+              verification_path_complete: `/pair/device?user_code=${USER_CODE}`,
+              expires_in: 600,
+              interval: 0,
+            },
+            201,
+          );
+        });
+        return;
+      case 'POST /api/auth/device/token':
+        readJson(req).then(({ device_code }) => {
+          if (device_code !== DEVICE_CODE) {
+            return json({ detail: 'expired_token' }, 400);
+          }
+          if (!deviceApproved) {
+            return json({ detail: 'authorization_pending' }, 400);
+          }
+          return json({
+            access_token: CLIENT_TOKEN,
+            device_id: 'device-1',
+            scopes: ['me.read', 'roms.read'],
+            expires_at: null,
+          });
+        });
+        return;
+      case 'GET /api/streaming/sessions/gb/status':
+        // The room once the launch is up, as RomM stamps it on the session.
+        return ++statusPolls > 1
+          ? json({ status: 'active', platform: 'gb', host: ROOM_PATH })
+          : json({ status: 'active', platform: 'gb' });
       case 'POST /api/streaming/sessions':
-        // The room URL follows over the socket, as RomM's broker sends it
-        // once the emulator is up.
-        setTimeout(() =>
-          io.emit('streaming:launch-ready', {
-            platform: 'gb',
-            container: CONTAINER,
-            host: ROOM_PATH,
-          }),
-        );
+        statusPolls = 0;
         return json(
           {
             platform: 'gb',
@@ -138,12 +173,6 @@ export async function startMockRomm(): Promise<MockRomm> {
         return json({ status: 'active', platform: 'gb' });
       case 'DELETE /api/streaming/sessions/gb':
         return json({});
-      case 'POST /api/login':
-        res.writeHead(200, {
-          'Content-Type': 'application/json',
-          'Set-Cookie': 'romm_session=session; Path=/; HttpOnly',
-        });
-        return res.end('{}');
       case `GET ${ROOM_PATH}`:
         res.writeHead(200, { 'Content-Type': 'text/html' });
         return res.end(ROOM_PAGE);
@@ -153,13 +182,6 @@ export async function startMockRomm(): Promise<MockRomm> {
     }
   });
 
-  // RomM's socket, which carries streaming launch events. Like RomM, it
-  // knows the user only from the login session cookie on the handshake.
-  const io = new SocketServer(server, { path: '/ws/socket.io/' });
-  io.on('connection', socket => {
-    socketCookies.push(socket.handshake.headers.cookie);
-  });
-
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
   const url = `http://127.0.0.1:${port}`;
@@ -167,7 +189,12 @@ export async function startMockRomm(): Promise<MockRomm> {
     url,
     requests,
     roomUrl: `${url}${ROOM_PATH}`,
-    socketCookies,
-    close: () => new Promise(resolve => io.close(() => resolve())),
+    get pairingRequest() {
+      return pairingRequest;
+    },
+    approveDevice: () => {
+      deviceApproved = true;
+    },
+    close: () => new Promise(resolve => server.close(() => resolve())),
   };
 }

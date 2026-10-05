@@ -1,77 +1,21 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { render, screen } from '@testing-library/react-native';
 import React from 'react';
-import {
-  getInBrowserPlayEnabled,
-  getLoginPath,
-  setInBrowserPlayEnabled,
-  setLoginPath,
-} from '../../settings/settingsStore';
-import { createScreenProps } from '../../testUtils/navigation';
 import { SettingsScreen } from '../SettingsScreen';
 
-async function renderScreen() {
-  const screenProps = createScreenProps('Settings', undefined);
-  await render(<SettingsScreen {...screenProps.props} />);
-  return screenProps;
-}
-
 describe('SettingsScreen', () => {
-  it('starts from the defaults when nothing is stored', async () => {
-    await renderScreen();
+  it('says there is nothing to configure on a TV', async () => {
+    await render(<SettingsScreen />);
 
-    expect(screen.getByTestId('settings-login-path')).toHaveDisplayValue(
-      '/api/login',
+    expect(screen.getByText('Settings')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-empty')).toHaveTextContent(
+      'There is nothing to configure on this device.',
     );
   });
 
-  it('loads the stored login path into the input', async () => {
-    await setLoginPath('/custom/login');
+  it('no longer offers a login path', async () => {
+    await render(<SettingsScreen />);
 
-    await renderScreen();
-
-    expect(await screen.findByDisplayValue('/custom/login')).toBeOnTheScreen();
-  });
-
-  it('has no in-browser play toggle and leaves that setting alone', async () => {
-    await setInBrowserPlayEnabled(true);
-    await renderScreen();
-
-    expect(screen.queryByTestId('settings-in-browser-play')).toBeNull();
-    await fireEvent.press(screen.getByTestId('settings-save'));
-
-    await expect(getInBrowserPlayEnabled()).resolves.toBe(true);
-  });
-
-  it('saves the trimmed login path', async () => {
-    await renderScreen();
-
-    await fireEvent.changeText(
-      screen.getByTestId('settings-login-path'),
-      '  /custom/login  ',
-    );
-    await fireEvent.press(screen.getByTestId('settings-save'));
-
-    await expect(getLoginPath()).resolves.toBe('/custom/login');
-  });
-
-  it('falls back to the default login path when the field is emptied', async () => {
-    await setLoginPath('/custom/login');
-    await renderScreen();
-
-    await fireEvent.changeText(
-      screen.getByTestId('settings-login-path'),
-      '   ',
-    );
-    await fireEvent.press(screen.getByTestId('settings-save'));
-
-    await expect(getLoginPath()).resolves.toBe('/api/login');
-  });
-
-  it('goes back once the settings are saved', async () => {
-    const { navigation } = await renderScreen();
-
-    await fireEvent.press(screen.getByTestId('settings-save'));
-
-    expect(navigation.goBack).toHaveBeenCalled();
+    expect(screen.queryByTestId('settings-login-path')).toBeNull();
+    expect(screen.queryByTestId('settings-save')).toBeNull();
   });
 });

@@ -9,7 +9,7 @@ import {
 const CREDS = {
   serverUrl: 'https://romm.example',
   username: 'player',
-  password: 'secret',
+  authMethod: 'pairing' as const,
 };
 
 afterEach(() => {
@@ -33,10 +33,10 @@ describe('secureStore (web)', () => {
     };
 
     await saveCredentials(CREDS);
-    await saveTokens({ accessToken: 'a', refreshToken: 'r' });
+    await saveTokens({ accessToken: 'rmm_a' });
 
     expect(await loadCredentials()).toEqual(CREDS);
-    expect(await loadTokens()).toEqual({ accessToken: 'a', refreshToken: 'r' });
+    expect(await loadTokens()).toEqual({ accessToken: 'rmm_a' });
     expect(localStorage.length).toBe(0);
 
     await clearAll();

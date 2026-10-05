@@ -7,9 +7,9 @@ import { DesktopPreferences, getDesktopBridge } from '../desktop/bridge';
 import { colors } from '../theme/colors';
 
 /**
- * Desktop-only settings. Unlike the rest of the Settings screen these apply
- * as soon as they're toggled: they belong to the Electron main process
- * (electron/preferences.ts), which needs them before the app has loaded.
+ * Desktop-only settings, applied as soon as they're toggled: they belong to
+ * the Electron main process (electron/preferences.ts), which needs them
+ * before the app has loaded.
  */
 
 function serverHost(serverUrl: string): string | null {
@@ -103,7 +103,7 @@ export function DesktopSettingsSection() {
 }
 
 const styles = StyleSheet.create({
-  section: { marginTop: 32, maxWidth: 620 },
+  section: { maxWidth: 620 },
   heading: {
     fontSize: 18,
     fontWeight: '700',

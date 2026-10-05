@@ -1,12 +1,37 @@
 // Loosely typed to survive RomM API changes across versions.
 // Only fields the app actually relies on are required; everything else is optional.
 
-export interface TokenResponse {
+/**
+ * POST /api/auth/device/init: a device authorization flow (RFC 8628 style)
+ * waiting for the user to approve it in RomM's web UI.
+ */
+export interface DeviceAuthInitResponse {
+  /** Secret: what the device polls with. */
+  device_code: string;
+  /** Short code the user confirms on RomM's approval page. */
+  user_code: string;
+  /** Web UI path of the approval page, e.g. "/pair/device". */
+  verification_path: string;
+  /** The same with `?user_code=` filled in, for a QR code. */
+  verification_path_complete: string;
+  expires_in: number;
+  /** Seconds to wait between polls. */
+  interval: number;
+}
+
+/** POST /api/auth/device/token once the user has approved. */
+export interface DeviceAuthTokenResponse {
+  /** A client API token (`rmm_...`). */
   access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires: number;
-  refresh_expires: number;
+  device_id: string;
+  scopes: string[];
+  expires_at: string | null;
+}
+
+/** The bits of GET /api/users/me the app reads. */
+export interface RommUser {
+  id: number;
+  username: string;
 }
 
 export interface RommPlatform {
@@ -108,7 +133,7 @@ export interface RommStats {
 }
 
 /** The 202 body of POST /api/streaming/sessions: a container is reserved and
- * the game is on its way up. The room URL follows over the socket. */
+ * the game is on its way up. The room URL follows on the session's status. */
 export interface RommLaunchingSession {
   platform: string;
   container: string;
@@ -130,6 +155,8 @@ export interface RommSessionTermination {
 export interface RommSessionStatus {
   status: 'active' | 'ended';
   platform: string;
+  /** The room URL once the stream is up (RomM releases that report it). */
+  host?: string | null;
   extraction_phase?: string | null;
   termination?: RommSessionTermination | null;
 }

@@ -13,9 +13,9 @@ const TOKENS_SERVICE = 'com.rommstream.tokens';
 const creds = {
   serverUrl: 'https://romm.test',
   username: 'player',
-  password: 'secret',
+  authMethod: 'pairing' as const,
 };
-const tokens = { accessToken: 'access', refreshToken: 'refresh' };
+const tokens = { accessToken: 'rmm_access' };
 
 describe('secureStore', () => {
   it('returns null when nothing has been saved', async () => {

@@ -21,10 +21,6 @@ const mockedRelease = jest.mocked(releaseStreamingSession);
 const SERVER = 'https://romm.test';
 const PLAY_URL = 'https://stream.test/room/abc';
 
-function loginMessage(payload: unknown) {
-  return { nativeEvent: { data: JSON.stringify(payload) } };
-}
-
 async function renderPlayer() {
   const screenProps = createScreenProps('GameStreamPlayer', {
     romId: 5,
@@ -44,8 +40,6 @@ beforeEach(() => {
   mockedUseAuth.mockReturnValue(
     createAuthValue({
       serverUrl: SERVER,
-      username: 'player',
-      password: 'p@ss',
     }),
   );
   mockedHeartbeat.mockResolvedValue({ status: 'active', platform: 'psx' });
@@ -54,13 +48,7 @@ beforeEach(() => {
 
 describe('GameStreamPlayerScreen', () => {
   it("loads the session's room URL once signed in", async () => {
-    const { webview } = await renderPlayer();
-
-    await fireEvent(
-      webview,
-      'message',
-      loginMessage({ type: 'login', ok: true, status: 200 }),
-    );
+    await renderPlayer();
 
     expect(screen.getByTestId('player-webview').props.source).toEqual({
       uri: PLAY_URL,
@@ -68,13 +56,7 @@ describe('GameStreamPlayerScreen', () => {
   });
 
   it('focuses the stream core on the room page rather than driving a lobby', async () => {
-    const { webview } = await renderPlayer();
-
-    await fireEvent(
-      webview,
-      'message',
-      loginMessage({ type: 'login', ok: true, status: 200 }),
-    );
+    await renderPlayer();
 
     const script =
       screen.getByTestId('player-webview').props.injectedJavaScript;
@@ -131,12 +113,7 @@ describe('GameStreamPlayerScreen', () => {
   });
 
   it("wires the pause menu's exit item to navigation.goBack", async () => {
-    const { webview, navigation } = await renderPlayer();
-    await fireEvent(
-      webview,
-      'message',
-      loginMessage({ type: 'login', ok: true, status: 200 }),
-    );
+    const { navigation } = await renderPlayer();
 
     await act(async () => {
       DeviceEventEmitter.emit('rommstream.hardwareKey', {
@@ -149,13 +126,8 @@ describe('GameStreamPlayerScreen', () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  async function openMenuAfterSignIn() {
-    const { webview } = await renderPlayer();
-    await fireEvent(
-      webview,
-      'message',
-      loginMessage({ type: 'login', ok: true, status: 200 }),
-    );
+  async function openMenu() {
+    await renderPlayer();
     const player = screen.getByTestId('player-webview');
 
     await act(async () => {
@@ -169,7 +141,7 @@ describe('GameStreamPlayerScreen', () => {
   }
 
   it('requests fullscreen via the selkies postMessage API', async () => {
-    const player = await openMenuAfterSignIn();
+    const player = await openMenu();
 
     await fireEvent.press(
       screen.getByTestId('player-menu-action-selkies-fullscreen'),
@@ -190,7 +162,7 @@ describe('GameStreamPlayerScreen', () => {
   ])(
     'sets the streamed resolution for %s',
     async (testId, ...expectedFields) => {
-      const player = await openMenuAfterSignIn();
+      const player = await openMenu();
 
       await fireEvent.press(screen.getByTestId(`player-menu-action-${testId}`));
 
@@ -207,7 +179,7 @@ describe('GameStreamPlayerScreen', () => {
   );
 
   it('resets the resolution to fit the window', async () => {
-    const player = await openMenuAfterSignIn();
+    const player = await openMenu();
 
     await fireEvent.press(
       screen.getByTestId('player-menu-action-selkies-aspect-reset'),
@@ -220,7 +192,7 @@ describe('GameStreamPlayerScreen', () => {
   });
 
   it('toggles gamepad capture and flips the menu label', async () => {
-    const player = await openMenuAfterSignIn();
+    const player = await openMenu();
 
     expect(screen.getByText('Disable Gamepad Capture')).toBeOnTheScreen();
     await fireEvent.press(

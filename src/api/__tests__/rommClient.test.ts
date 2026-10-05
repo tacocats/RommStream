@@ -1,15 +1,14 @@
 import {
   fetchCall,
-  fetchFormBody,
   fetchMock,
   fetchUrl,
   mockFetchOnce,
 } from '../../testUtils/fetchMock';
 import {
   claimStreamingSession,
-  ensureRommSession,
   getCollections,
   getConfig,
+  getCurrentUser,
   getHeartbeat,
   getPlatforms,
   getRecentlyAddedRoms,
@@ -23,21 +22,12 @@ import {
   getStreamingSessionStatus,
   getVirtualCollections,
   heartbeatStreamingSession,
-  login,
   normalizeServerUrl,
-  refreshAccessToken,
   releaseStreamingSession,
 } from '../rommClient';
 import { MemoryCardImportRequiredError, RommApiError, RommRom } from '../types';
 
 const SERVER = 'https://romm.test';
-const TOKENS = {
-  access_token: 'access',
-  refresh_token: 'refresh',
-  token_type: 'bearer',
-  expires: 900,
-  refresh_expires: 86400,
-};
 
 function makeRoms(count: number, startId: number): RommRom[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -73,38 +63,31 @@ describe('normalizeServerUrl', () => {
   });
 });
 
-describe('login', () => {
-  it('posts password-grant form data to /api/token and returns the tokens', async () => {
-    mockFetchOnce({ body: TOKENS });
+describe('getCurrentUser', () => {
+  it('reads the account behind the token', async () => {
+    mockFetchOnce({ body: { id: 1, username: 'player' } });
 
-    await expect(login(SERVER, 'user', 'p&ss word')).resolves.toEqual(TOKENS);
+    await expect(getCurrentUser(SERVER, 'rmm_tok')).resolves.toEqual({
+      id: 1,
+      username: 'player',
+    });
 
     const [url, init] = fetchCall();
-    expect(url).toBe(`${SERVER}/api/token`);
-    expect(init?.method).toBe('POST');
-    expect(init?.headers).toEqual({
-      'Content-Type': 'application/x-www-form-urlencoded',
-    });
-    const body = fetchFormBody();
-    expect(body.get('grant_type')).toBe('password');
-    expect(body.get('username')).toBe('user');
-    expect(body.get('password')).toBe('p&ss word');
-    expect(body.get('scope')).toBe(
-      'me.read platforms.read roms.read collections.read roms.user.write',
-    );
+    expect(url).toBe(`${SERVER}/api/users/me`);
+    expect(init?.headers).toEqual({ Authorization: 'Bearer rmm_tok' });
+    expect(init?.credentials).toBe('omit');
   });
+});
 
+describe('error responses', () => {
   it('throws a RommApiError carrying the server detail and status', async () => {
-    mockFetchOnce({
-      status: 401,
-      body: { detail: 'Incorrect username or password' },
-    });
+    mockFetchOnce({ status: 403, body: { detail: 'Forbidden' } });
 
-    const error = await login(SERVER, 'user', 'nope').catch(e => e);
+    const error = await getCurrentUser(SERVER, 'rmm_tok').catch(e => e);
     expect(error).toBeInstanceOf(RommApiError);
     expect(error.name).toBe('RommApiError');
-    expect(error.message).toBe('Incorrect username or password');
-    expect(error.status).toBe(401);
+    expect(error.message).toBe('Forbidden');
+    expect(error.status).toBe(403);
   });
 
   it('falls back to the status text for non-JSON error bodies', async () => {
@@ -114,30 +97,17 @@ describe('login', () => {
       text: '<html>proxy error</html>',
     });
 
-    await expect(login(SERVER, 'user', 'pw')).rejects.toThrow('Bad Gateway');
+    await expect(getCurrentUser(SERVER, 'rmm_tok')).rejects.toThrow(
+      'Bad Gateway',
+    );
   });
 
   it('falls back to the status code when there is no status text', async () => {
     mockFetchOnce({ status: 502, text: '' });
 
-    await expect(login(SERVER, 'user', 'pw')).rejects.toThrow(
+    await expect(getCurrentUser(SERVER, 'rmm_tok')).rejects.toThrow(
       'Request failed (502)',
     );
-  });
-});
-
-describe('refreshAccessToken', () => {
-  it('posts a refresh_token grant', async () => {
-    mockFetchOnce({ body: TOKENS });
-
-    await expect(refreshAccessToken(SERVER, 'old-refresh')).resolves.toEqual(
-      TOKENS,
-    );
-
-    expect(fetchCall()[0]).toBe(`${SERVER}/api/token`);
-    const body = fetchFormBody();
-    expect(body.get('grant_type')).toBe('refresh_token');
-    expect(body.get('refresh_token')).toBe('old-refresh');
   });
 });
 
@@ -644,62 +614,5 @@ describe('releaseStreamingSession', () => {
 
     expect(fetchUrl().searchParams.get('save')).toBe('false');
     expect(fetchUrl().searchParams.get('container')).toBe('romm-pcsx2');
-  });
-});
-
-describe('ensureRommSession', () => {
-  const LOGIN = {
-    username: 'player',
-    password: 'pässword',
-    loginPath: '/api/login',
-  };
-
-  it('reuses a live session cookie without signing in again', async () => {
-    mockFetchOnce({ body: { id: 1, username: 'player' } });
-
-    await ensureRommSession(SERVER, LOGIN);
-
-    expect(fetchMock()).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchCall();
-    expect(url).toBe(`${SERVER}/api/users/me`);
-    expect(init?.credentials).toBe('include');
-    expect(init?.headers).toBeUndefined();
-  });
-
-  it('signs in with HTTP Basic, keeping the cookie, when there is no session', async () => {
-    mockFetchOnce({ status: 401, body: { detail: 'Not authenticated' } });
-    mockFetchOnce({ body: { msg: 'Successfully logged in' } });
-
-    await ensureRommSession(SERVER, LOGIN);
-
-    const [url, init] = fetchCall(1);
-    expect(url).toBe(`${SERVER}/api/login`);
-    expect(init?.method).toBe('POST');
-    expect(init?.credentials).toBe('include');
-    // UTF-8 before base64, as RomM decodes it.
-    expect(init?.headers).toEqual({
-      Authorization: 'Basic cGxheWVyOnDDpHNzd29yZA==',
-    });
-  });
-
-  it('honours a custom login path', async () => {
-    mockFetchOnce({ status: 401 });
-    mockFetchOnce({ body: {} });
-
-    await ensureRommSession(SERVER, { ...LOGIN, loginPath: '/romm/login' });
-
-    expect(fetchCall(1)[0]).toBe(`${SERVER}/romm/login`);
-  });
-
-  it('throws the server detail when the sign-in is rejected', async () => {
-    mockFetchOnce({ status: 401 });
-    mockFetchOnce({
-      status: 401,
-      body: { detail: 'Incorrect username or password' },
-    });
-
-    const error = await ensureRommSession(SERVER, LOGIN).catch(e => e);
-    expect(error).toBeInstanceOf(RommApiError);
-    expect(error.message).toBe('Incorrect username or password');
   });
 });

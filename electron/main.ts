@@ -17,7 +17,6 @@ import { setLaunchAtLogin } from './launchAtLogin';
 import { getPreferences, updatePreferences } from './preferences';
 import { rommFetch } from './rommFetch';
 import { secureDelete, secureGet, secureSet } from './secureStore';
-import { attachCookiesToRommSockets } from './socketCookies';
 
 /**
  * Electron shell for the desktop (Windows / macOS / Linux) build: one
@@ -328,7 +327,6 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     appSessions().forEach(trustConfiguredCertificates);
     restrictPermissions();
-    attachCookiesToRommSockets(session.defaultSession);
     registerIpc();
     setUpMenu();
     createWindow();

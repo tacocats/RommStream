@@ -121,9 +121,26 @@ to build them yourself.
 
 ### Signing in
 
-Open the app and enter your RomM server's address and your RomM username and
-password. Once signed in, browse by platform, search, or pick from the home
-shelves, then press **Play** on a game to start a stream.
+RommStream signs in by pairing with your RomM server (RomM 5.3.1 or later),
+so there's no username or password to type with a remote:
+
+1. Open the app, enter your RomM server's address and choose
+   **Get pairing code**.
+2. The app shows a code, a link and a QR code. Scan the QR code with your
+   phone, or open the link on any device signed in to RomM.
+3. Approve RommStream on RomM's page. Keep the `roms.user.write` permission
+   selected, which starting streams needs.
+
+The app signs in by itself once you approve, with a
+[client API token](https://docs.romm.app/latest/developers/client-api-tokens/)
+RomM issues for this device, so there's nothing to re-enter later. If the
+token is revoked or expires in RomM, sign out in the app and pair again.
+
+Once paired, browse by platform, search, or pick from the home shelves, then
+press **Play** on a game to start a stream.
+
+Upgrading from a release that signed in with a username and password? That
+sign-in is dropped on first launch; pair the device once instead.
 
 If your RomM server uses plain HTTP, see
 [Notes on HTTP-only RomM servers](#notes-on-http-only-romm-servers). For a
@@ -319,8 +336,8 @@ npm run lint
 
 #### End-to-end tests (Detox, Android TV)
 
-`e2e/login.test.js` boots the app on an Android TV emulator, checks the login
-form and drives a sign-in against an unreachable server. Detox does not
+`e2e/login.test.js` boots the app on an Android TV emulator, checks the
+sign-in screen and asks an unreachable server for a pairing code. Detox does not
 support tvOS.
 
 Prerequisites: the Android SDK, JDK 17, and an Android TV AVD named
@@ -355,8 +372,9 @@ would additionally need a network security config permitting cleartext to
 
 `e2e-desktop/desktop.spec.ts` launches the Electron app against a small mock
 RomM server (`e2e-desktop/mockRommServer.ts`, which sends no CORS headers) and
-signs in, browses, launches a game and opens the pause menu with the keyboard
-alone, then checks the sign-in survives a restart.
+pairs (standing in for the approval in RomM), browses, launches a game and
+opens the pause menu with the keyboard alone, then checks the pairing survives
+a restart.
 
 ```sh
 npm run build:desktop
@@ -392,7 +410,7 @@ src/
   input/          Remote/controller keys; web/ has the desktop focus + gamepad layer
   navigation/     React Navigation stack
   screens/        Login, Main (Home/Platforms/Search tabs), Roms, Player (WebView), Settings
-  settings/       On-device settings (login path; in-browser play flag, off) via AsyncStorage
+  settings/       On-device settings (pairing device ID; in-browser play flag, off) via AsyncStorage
   testUtils/      Helpers shared by the Jest tests
   theme/          Shared color tokens
 e2e/              Detox end-to-end tests (Android TV)

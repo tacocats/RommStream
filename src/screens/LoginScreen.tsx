@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -8,26 +8,34 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { DevicePairingPrompt } from '../api/deviceAuth';
 import { useAuth } from '../auth/AuthContext';
 import { FocusablePressable } from '../components/FocusablePressable';
 import { ArrowRightIcon, LogoMarkIcon } from '../components/icons';
+import { QrCode } from '../components/QrCode';
 import { colors } from '../theme/colors';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('login');
 
+/** "ABCD2345" as "ABCD-2345", easier to read off a TV across the room. */
+function formatUserCode(code: string): string {
+  return code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+}
+
 export function LoginScreen() {
-  const { signIn } = useAuth();
+  const { pairDevice } = useAuth();
   const [serverUrl, setServerUrl] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // The code RomM is waiting for someone to approve, while pairing.
+  const [prompt, setPrompt] = useState<DevicePairingPrompt | null>(null);
+  const pairingAbort = useRef<AbortController | null>(null);
 
-  const canSubmit =
-    serverUrl.trim().length > 0 &&
-    username.trim().length > 0 &&
-    password.length > 0;
+  // Leaving the screen stops polling RomM for an approval.
+  useEffect(() => () => pairingAbort.current?.abort(), []);
+
+  const canSubmit = serverUrl.trim().length > 0;
 
   const handleSubmit = async () => {
     if (!canSubmit || submitting) {
@@ -35,14 +43,31 @@ export function LoginScreen() {
     }
     setSubmitting(true);
     setError(null);
+    const controller = new AbortController();
+    pairingAbort.current = controller;
     try {
-      await signIn(serverUrl, username, password);
+      await pairDevice(serverUrl, {
+        onPrompt: setPrompt,
+        signal: controller.signal,
+      });
     } catch (e) {
+      if (controller.signal.aborted) {
+        return;
+      }
       log.error(`sign-in failed for ${serverUrl}`, e);
       setError(e instanceof Error ? e.message : 'Unable to sign in');
     } finally {
-      setSubmitting(false);
+      if (!controller.signal.aborted) {
+        setSubmitting(false);
+        setPrompt(null);
+      }
     }
+  };
+
+  const cancelPairing = () => {
+    pairingAbort.current?.abort();
+    setSubmitting(false);
+    setPrompt(null);
   };
 
   return (
@@ -61,76 +86,103 @@ export function LoginScreen() {
       </View>
 
       <View style={styles.centerWrap}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Sign in</Text>
-          <Text style={styles.subtitle}>
-            Connect to your RomM server to browse your library.
-          </Text>
-
-          <Text style={styles.label}>Server address</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="https://romm.home.local"
-            placeholderTextColor={colors.textFaint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            value={serverUrl}
-            onChangeText={setServerUrl}
-            hasTVPreferredFocus
-            testID="login-server-url"
-          />
-
-          <Text style={styles.label}>Username</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Your username"
-            placeholderTextColor={colors.textFaint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            value={username}
-            onChangeText={setUsername}
-            testID="login-username"
-          />
-
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholderTextColor={colors.textFaint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            onSubmitEditing={handleSubmit}
-            testID="login-password"
-          />
-
-          {error && (
-            <Text style={styles.error} testID="login-error">
-              {error}
-            </Text>
-          )}
-
-          <FocusablePressable
-            style={[styles.button, !canSubmit && styles.buttonDisabled]}
-            onPress={handleSubmit}
-            disabled={!canSubmit || submitting}
-            testID="login-submit"
+        {prompt ? (
+          <View
+            style={[styles.card, styles.pairingCard]}
+            testID="pairing-prompt"
           >
-            {submitting ? (
-              <ActivityIndicator
-                color={colors.background}
-                testID="login-spinner"
-              />
-            ) : (
-              <>
-                <Text style={styles.buttonText}>Connect</Text>
-                <ArrowRightIcon color={colors.background} size={18} />
-              </>
+            <Text style={styles.title}>Approve this device</Text>
+            <Text style={styles.subtitle}>
+              Scan the code with your phone, or open the link on any device
+              signed in to RomM, and approve RommStream there.
+            </Text>
+
+            <View style={styles.pairingRow}>
+              <View style={styles.qrWrap}>
+                <QrCode
+                  value={prompt.verificationUrl}
+                  size={168}
+                  testID="pairing-qr"
+                />
+              </View>
+              <View style={styles.pairingDetails}>
+                <Text style={styles.label}>Code</Text>
+                <Text
+                  style={styles.userCode}
+                  numberOfLines={1}
+                  testID="pairing-user-code"
+                >
+                  {formatUserCode(prompt.userCode)}
+                </Text>
+                <Text style={styles.label}>Link</Text>
+                <Text style={styles.verificationUrl} testID="pairing-url">
+                  {prompt.verificationUrl}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.waitingRow}>
+              <ActivityIndicator color={colors.accent} />
+              <Text style={styles.waitingText}>Waiting for approval…</Text>
+            </View>
+
+            <FocusablePressable
+              style={styles.secondaryButton}
+              onPress={cancelPairing}
+              hasTVPreferredFocus
+              testID="pairing-cancel"
+            >
+              <Text style={styles.secondaryButtonText}>Cancel</Text>
+            </FocusablePressable>
+          </View>
+        ) : (
+          <View style={styles.card}>
+            <Text style={styles.title}>Sign in</Text>
+            <Text style={styles.subtitle}>
+              Pair this device with your RomM server
+            </Text>
+
+            <Text style={styles.label}>Server address</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="https://romm.home.local"
+              placeholderTextColor={colors.textFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              value={serverUrl}
+              onChangeText={setServerUrl}
+              onSubmitEditing={handleSubmit}
+              hasTVPreferredFocus
+              testID="login-server-url"
+            />
+
+            {error && (
+              <Text style={styles.error} testID="login-error">
+                {error}
+              </Text>
             )}
-          </FocusablePressable>
-        </View>
+
+            <FocusablePressable
+              style={[styles.button, !canSubmit && styles.buttonDisabled]}
+              onPress={handleSubmit}
+              disabled={!canSubmit || submitting}
+              testID="login-submit"
+            >
+              {submitting ? (
+                <ActivityIndicator
+                  color={colors.background}
+                  testID="login-spinner"
+                />
+              ) : (
+                <>
+                  <Text style={styles.buttonText}>Get pairing code</Text>
+                  <ArrowRightIcon color={colors.background} size={18} />
+                </>
+              )}
+            </FocusablePressable>
+          </View>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -215,6 +267,37 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSolid,
     marginBottom: 20,
   },
+  pairingCard: { maxWidth: 620 },
+  pairingRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 24,
+    alignItems: 'center',
+  },
+  qrWrap: {
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+  },
+  pairingDetails: { flex: 1, minWidth: 180 },
+  userCode: {
+    color: colors.textPrimary,
+    fontSize: 34,
+    fontWeight: '800',
+    letterSpacing: 3,
+    marginBottom: 16,
+  },
+  verificationUrl: {
+    color: colors.textSecondary,
+    fontSize: 13,
+  },
+  waitingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 24,
+  },
+  waitingText: { color: colors.textSecondary, fontSize: 14 },
   error: {
     color: colors.danger,
     marginBottom: 16,
@@ -236,5 +319,18 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontSize: 16,
     fontWeight: '700',
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  secondaryButtonText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

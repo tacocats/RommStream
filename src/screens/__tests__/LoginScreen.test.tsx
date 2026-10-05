@@ -8,6 +8,12 @@ jest.mock('../../auth/AuthContext');
 
 const mockedUseAuth = jest.mocked(useAuth);
 
+const PROMPT = {
+  userCode: 'ABCD2345',
+  verificationUrl: 'https://romm.test/pair/device?user_code=ABCD2345',
+  expiresInSeconds: 600,
+};
+
 let auth: AuthValue;
 
 beforeEach(() => {
@@ -19,87 +25,127 @@ beforeEach(() => {
   mockedUseAuth.mockReturnValue(auth);
 });
 
-async function fillForm() {
+async function renderWithServer() {
+  await render(<LoginScreen />);
   await fireEvent.changeText(
     screen.getByTestId('login-server-url'),
     'romm.test',
   );
-  await fireEvent.changeText(screen.getByTestId('login-username'), 'player');
-  await fireEvent.changeText(screen.getByTestId('login-password'), 'secret');
+}
+
+/**
+ * Press "Get pairing code" and wait for the code to show. Not awaiting the
+ * press itself: its handler only settles once pairing does.
+ */
+async function requestCode() {
+  fireEvent.press(screen.getByTestId('login-submit'));
+  await screen.findByTestId('pairing-prompt');
+}
+
+/** pairDevice that shows the code and then waits for approval. */
+function pairingWaits() {
+  let signal: AbortSignal | undefined;
+  jest.mocked(auth.pairDevice).mockImplementationOnce(async (_url, options) => {
+    signal = options.signal;
+    options.onPrompt(PROMPT);
+    await new Promise((_resolve, reject) =>
+      options.signal?.addEventListener('abort', () =>
+        reject(new Error('Pairing cancelled')),
+      ),
+    );
+  });
+  return () => signal;
 }
 
 describe('LoginScreen', () => {
-  it('keeps Sign In disabled until every field is filled', async () => {
+  it('only asks for the server address', async () => {
     await render(<LoginScreen />);
 
+    expect(screen.queryByTestId('login-username')).toBeNull();
+    expect(screen.queryByTestId('login-password')).toBeNull();
+    expect(screen.queryByTestId('login-mode-toggle')).toBeNull();
     expect(screen.getByTestId('login-submit')).toBeDisabled();
 
     await fireEvent.changeText(
       screen.getByTestId('login-server-url'),
       'romm.test',
     );
-    await fireEvent.changeText(screen.getByTestId('login-username'), 'player');
-    expect(screen.getByTestId('login-submit')).toBeDisabled();
-
-    await fireEvent.changeText(screen.getByTestId('login-password'), 'secret');
     expect(screen.getByTestId('login-submit')).toBeEnabled();
+    expect(screen.getByText('Get pairing code')).toBeOnTheScreen();
 
-    await fireEvent.changeText(screen.getByTestId('login-username'), '   ');
+    await fireEvent.changeText(screen.getByTestId('login-server-url'), '  ');
     expect(screen.getByTestId('login-submit')).toBeDisabled();
   });
 
-  it('signs in with the entered values', async () => {
-    await render(<LoginScreen />);
-    await fillForm();
+  it('shows the code, link and QR code to approve', async () => {
+    pairingWaits();
+    await renderWithServer();
 
-    await fireEvent.press(screen.getByTestId('login-submit'));
+    await requestCode();
 
-    expect(auth.signIn).toHaveBeenCalledWith('romm.test', 'player', 'secret');
-    expect(screen.queryByTestId('login-error')).toBeNull();
-  });
-
-  it('submits from the password field', async () => {
-    await render(<LoginScreen />);
-    await fillForm();
-
-    await fireEvent(screen.getByTestId('login-password'), 'submitEditing');
-
-    expect(auth.signIn).toHaveBeenCalledTimes(1);
-  });
-
-  // The in-flight spinner can't be observed: fireEvent awaits the press
-  // handler, which awaits signIn, and React only commits once that settles.
-  it('restores the button once signing in has finished', async () => {
-    await render(<LoginScreen />);
-    await fillForm();
-
-    await fireEvent.press(screen.getByTestId('login-submit'));
-
-    expect(auth.signIn).toHaveBeenCalledTimes(1);
-    expect(screen.queryByTestId('login-spinner')).toBeNull();
-    expect(screen.getByText('Connect')).toBeOnTheScreen();
-    expect(screen.getByTestId('login-submit')).toBeEnabled();
-  });
-
-  it('shows the error message when signing in fails', async () => {
-    jest
-      .mocked(auth.signIn)
-      .mockRejectedValueOnce(new Error('Incorrect username or password'));
-    await render(<LoginScreen />);
-    await fillForm();
-
-    await fireEvent.press(screen.getByTestId('login-submit'));
-
-    expect(await screen.findByTestId('login-error')).toHaveTextContent(
-      'Incorrect username or password',
+    expect(auth.pairDevice).toHaveBeenCalledWith(
+      'romm.test',
+      expect.objectContaining({ onPrompt: expect.any(Function) }),
     );
+    expect(screen.getByTestId('pairing-user-code')).toHaveTextContent(
+      'ABCD-2345',
+    );
+    expect(screen.getByTestId('pairing-url')).toHaveTextContent(
+      PROMPT.verificationUrl,
+    );
+    expect(screen.getByTestId('pairing-qr')).toBeOnTheScreen();
+    expect(screen.getByText('Waiting for approval…')).toBeOnTheScreen();
+  });
+
+  it('starts pairing from the server field', async () => {
+    await renderWithServer();
+
+    await fireEvent(screen.getByTestId('login-server-url'), 'submitEditing');
+
+    expect(auth.pairDevice).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels back to the form, without an error', async () => {
+    const signal = pairingWaits();
+    await renderWithServer();
+    await requestCode();
+
+    await fireEvent.press(screen.getByTestId('pairing-cancel'));
+
+    expect(signal()?.aborted).toBe(true);
+    expect(screen.queryByTestId('pairing-prompt')).toBeNull();
+    expect(screen.queryByTestId('login-error')).toBeNull();
+    expect(screen.getByTestId('login-submit')).toBeEnabled();
+  });
+
+  it('stops waiting when the screen goes away', async () => {
+    const signal = pairingWaits();
+    await renderWithServer();
+    await requestCode();
+
+    await screen.unmount();
+
+    expect(signal()?.aborted).toBe(true);
+  });
+
+  it('explains a failed pairing and offers a new code', async () => {
+    jest
+      .mocked(auth.pairDevice)
+      .mockRejectedValueOnce(new Error('Pairing was denied in RomM.'));
+    await renderWithServer();
+
+    await fireEvent.press(screen.getByTestId('login-submit'));
+
+    expect(screen.getByTestId('login-error')).toHaveTextContent(
+      'Pairing was denied in RomM.',
+    );
+    expect(screen.queryByTestId('login-spinner')).toBeNull();
     expect(screen.getByTestId('login-submit')).toBeEnabled();
   });
 
   it('shows a generic message for non-Error rejections', async () => {
-    jest.mocked(auth.signIn).mockRejectedValueOnce('nope');
-    await render(<LoginScreen />);
-    await fillForm();
+    jest.mocked(auth.pairDevice).mockRejectedValueOnce('nope');
+    await renderWithServer();
 
     await fireEvent.press(screen.getByTestId('login-submit'));
 

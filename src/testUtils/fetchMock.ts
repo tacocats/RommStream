@@ -63,18 +63,9 @@ export interface ParsedUrl {
 }
 
 type WhatwgUrl = new (url: string) => ParsedUrl;
-type WhatwgSearchParams = new (init: string) => SearchParams;
 
 /** The n-th fetch call's URL, parsed. */
 export function fetchUrl(index = 0): ParsedUrl {
   const Url = (globalThis as unknown as { URL: WhatwgUrl }).URL;
   return new Url(fetchCall(index)[0]);
-}
-
-/** The n-th fetch call's form-encoded request body, parsed. */
-export function fetchFormBody(index = 0): SearchParams {
-  const Params = (
-    globalThis as unknown as { URLSearchParams: WhatwgSearchParams }
-  ).URLSearchParams;
-  return new Params(String(fetchCall(index)[1]?.body ?? ''));
 }

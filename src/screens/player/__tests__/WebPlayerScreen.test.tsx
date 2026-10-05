@@ -1,24 +1,19 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 import { DeviceEventEmitter } from 'react-native';
-import { useAuth } from '../../../auth/AuthContext';
 import { requestTVFocus } from '../../../input/tvFocus';
-import { setLoginPath } from '../../../settings/settingsStore';
-import { createAuthValue } from '../../../testUtils/mockAuth';
 import { PlayerMenuAction } from '../PlayerMenu';
 import { WebPlayerScreen } from '../WebPlayerScreen';
 
-jest.mock('../../../auth/AuthContext');
 jest.mock('../../../input/tvFocus');
 
-const mockedUseAuth = jest.mocked(useAuth);
 const mockedRequestTVFocus = jest.mocked(requestTVFocus);
 
 const SERVER = 'https://romm.test';
 const PLAY_URL = `${SERVER}/rom/5/ejs`;
 const AUTO_PLAY_SCRIPT = 'AUTO_PLAY_SCRIPT_MARKER';
 
-function loginMessage(payload: unknown) {
+function pageMessage(payload: unknown) {
   return { nativeEvent: { data: JSON.stringify(payload) } };
 }
 
@@ -58,121 +53,39 @@ async function layOutMenu() {
   });
 }
 
-/** Sign in, then hand back the WebView showing the game. */
-async function signIn(webview: ReturnType<typeof screen.getByTestId>) {
-  await fireEvent(
-    webview,
-    'message',
-    loginMessage({ type: 'login', ok: true, status: 200 }),
-  );
-  return screen.getByTestId('player-webview');
-}
-
-beforeEach(() => {
-  mockedUseAuth.mockReturnValue(
-    createAuthValue({
-      serverUrl: SERVER,
-      username: 'player',
-      password: 'p@ss',
-    }),
-  );
-});
-
 describe('WebPlayerScreen', () => {
-  it('bootstraps the WebView with the login script', async () => {
+  it('loads the play URL and runs the auto-play script there', async () => {
     const { webview } = await renderPlayer();
 
-    expect(screen.queryByTestId('player-loading')).toBeNull();
-    expect(webview.props.source).toEqual({ uri: `${SERVER}/api/heartbeat` });
-    expect(webview.props.injectedJavaScript).toContain('fetch("/api/login"');
-    expect(webview.props.injectedJavaScript).toContain('"player"');
-    expect(webview.props.injectedJavaScript).toContain('"p@ss"');
-    expect(screen.getByText(`Signing in to ${SERVER}…`)).toBeOnTheScreen();
+    expect(webview.props.source).toEqual({ uri: PLAY_URL });
+    expect(webview.props.injectedJavaScript).toBe(AUTO_PLAY_SCRIPT);
   });
 
-  it('honours the stored login path', async () => {
-    await setLoginPath('/custom/login');
+  it('ignores page messages it does not know', async () => {
     const { webview } = await renderPlayer();
 
-    expect(webview.props.injectedJavaScript).toContain('fetch("/custom/login"');
-  });
-
-  it('switches to the play URL and runs the auto-play script once login succeeds', async () => {
-    const { webview } = await renderPlayer();
-
-    const player = await signIn(webview);
-
-    expect(player.props.source).toEqual({ uri: PLAY_URL });
-    expect(player.props.injectedJavaScript).toBe(AUTO_PLAY_SCRIPT);
-    expect(screen.queryByText(/Signing in/)).toBeNull();
-  });
-
-  it('ignores messages that are not login results', async () => {
-    const { webview } = await renderPlayer();
-
-    await fireEvent(
-      webview,
-      'message',
-      loginMessage({ type: 'other', ok: true }),
-    );
+    await fireEvent(webview, 'message', pageMessage({ type: 'other' }));
     await fireEvent(webview, 'message', { nativeEvent: { data: 'not json' } });
 
     expect(screen.getByTestId('player-webview').props.source).toEqual({
-      uri: `${SERVER}/api/heartbeat`,
+      uri: PLAY_URL,
     });
-    expect(screen.getByText(/Signing in/)).toBeOnTheScreen();
-  });
-
-  it.each([
-    [401, /rejected the username\/password/],
-    [404, /Login endpoint not found at \/api\/login/],
-    [500, /HTTP 500/],
-  ])('explains a login failure with HTTP %i', async (status, message) => {
-    const { webview } = await renderPlayer();
-
-    await fireEvent(
-      webview,
-      'message',
-      loginMessage({ type: 'login', ok: false, status }),
-    );
-
-    expect(screen.getByTestId('player-error')).toHaveTextContent(message);
-    expect(screen.queryByText(/Signing in/)).toBeNull();
-  });
-
-  it('explains a login failure without a status', async () => {
-    const { webview } = await renderPlayer();
-
-    await fireEvent(
-      webview,
-      'message',
-      loginMessage({
-        type: 'login',
-        ok: false,
-        error: 'TypeError: Failed to fetch',
-      }),
-    );
-
-    expect(screen.getByTestId('player-error')).toHaveTextContent(
-      'Sign-in request failed: TypeError: Failed to fetch',
-    );
+    expect(screen.queryByTestId('player-error')).toBeNull();
   });
 
   it('takes Android focus when the page reports the canvas is focused', async () => {
-    const { webview } = await renderPlayer();
-    const player = await signIn(webview);
+    const { webview: player } = await renderPlayer();
     const { requestFocus } = player.props.imperativeHandle;
     requestFocus.mockClear();
 
-    await fireEvent(player, 'message', loginMessage({ type: 'canvas' }));
+    await fireEvent(player, 'message', pageMessage({ type: 'canvas' }));
 
     expect(requestFocus).toHaveBeenCalled();
   });
 
   describe('pause menu', () => {
     it('opens on Back instead of leaving the game', async () => {
-      const { webview, onExit } = await renderPlayer();
-      await signIn(webview);
+      const { onExit } = await renderPlayer();
 
       await pressBack();
 
@@ -182,8 +95,7 @@ describe('WebPlayerScreen', () => {
     });
 
     it('takes focus off the game as it opens', async () => {
-      const { webview } = await renderPlayer();
-      await signIn(webview);
+      await renderPlayer();
       await pressBack();
 
       await layOutMenu();
@@ -194,21 +106,19 @@ describe('WebPlayerScreen', () => {
     });
 
     it('keeps focus while the page reports the canvas behind it', async () => {
-      const { webview } = await renderPlayer();
-      const player = await signIn(webview);
+      const { webview: player } = await renderPlayer();
       await pressBack();
       const { requestFocus } = player.props.imperativeHandle;
       requestFocus.mockClear();
 
-      await fireEvent(player, 'message', loginMessage({ type: 'canvas' }));
+      await fireEvent(player, 'message', pageMessage({ type: 'canvas' }));
 
       expect(requestFocus).not.toHaveBeenCalled();
       expect(screen.getByTestId('player-menu')).toBeOnTheScreen();
     });
 
     it('closes again on a second Back', async () => {
-      const { webview } = await renderPlayer();
-      await signIn(webview);
+      await renderPlayer();
 
       await pressBack();
       await pressBack();
@@ -217,8 +127,7 @@ describe('WebPlayerScreen', () => {
     });
 
     it('resumes the game and hands focus back to the WebView', async () => {
-      const { webview } = await renderPlayer();
-      const player = await signIn(webview);
+      const { webview: player } = await renderPlayer();
       await pressBack();
       const { requestFocus } = player.props.imperativeHandle;
       requestFocus.mockClear();
@@ -230,8 +139,7 @@ describe('WebPlayerScreen', () => {
     });
 
     it('leaves the game from the exit item', async () => {
-      const { webview, onExit } = await renderPlayer();
-      await signIn(webview);
+      const { onExit } = await renderPlayer();
       await pressBack();
 
       await fireEvent.press(screen.getByTestId('player-menu-exit'));
@@ -239,17 +147,8 @@ describe('WebPlayerScreen', () => {
       expect(onExit).toHaveBeenCalled();
     });
 
-    it('is not armed while still signing in', async () => {
-      await renderPlayer();
-
-      await pressBack();
-
-      expect(screen.queryByTestId('player-menu')).toBeNull();
-    });
-
     it('is not armed once the player has failed', async () => {
-      const { webview } = await renderPlayer();
-      const player = await signIn(webview);
+      const { webview: player } = await renderPlayer();
       await fireEvent(player, 'error', {
         nativeEvent: { description: 'net::ERR_CONNECTION_REFUSED' },
       });
@@ -263,8 +162,7 @@ describe('WebPlayerScreen', () => {
 
   describe('extra menu actions', () => {
     it('renders none by default', async () => {
-      const { webview } = await renderPlayer();
-      await signIn(webview);
+      await renderPlayer();
       await pressBack();
 
       expect(screen.queryByTestId('player-menu-action-test-action')).toBeNull();
@@ -272,14 +170,13 @@ describe('WebPlayerScreen', () => {
 
     it('runs a supplied action and closes the menu', async () => {
       const onSelect = jest.fn();
-      const { webview } = await renderPlayer(jest.fn(), send => [
+      const { webview: player } = await renderPlayer(jest.fn(), send => [
         {
           id: 'test-action',
           label: 'Test Action',
           onSelect: () => onSelect(send),
         },
       ]);
-      const player = await signIn(webview);
       await pressBack();
       const { requestFocus, injectJavaScript } = player.props.imperativeHandle;
       requestFocus.mockClear();

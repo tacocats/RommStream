@@ -9,7 +9,7 @@ import path from 'node:path';
  *
  * On a Linux desktop with no keyring running, safeStorage falls back to a
  * fixed key ("basic_text"), which is obfuscation rather than encryption; that
- * is logged, since the stored credentials include the RomM password.
+ * is logged, since what's stored includes the device's RomM API token.
  */
 
 type Entries = Record<string, string>;

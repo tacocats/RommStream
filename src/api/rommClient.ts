@@ -12,15 +12,15 @@ import {
   RommRom,
   RommRomDetail,
   RommStats,
+  RommUser,
   RommVirtualCollection,
-  TokenResponse,
 } from './types';
 
 const log = createLogger('api');
 
-// Read-only scopes are enough for browsing + launching the web player;
-// claiming and releasing a streaming container needs roms.user.write.
-const REQUESTED_SCOPES =
+// What device pairing asks RomM for: read-only scopes for browsing, and
+// roms.user.write to claim and release streaming containers.
+export const REQUESTED_SCOPES =
   'me.read platforms.read roms.read collections.read roms.user.write';
 
 export function normalizeServerUrl(rawUrl: string): string {
@@ -31,7 +31,7 @@ export function normalizeServerUrl(rawUrl: string): string {
   return trimmed;
 }
 
-async function parseJsonOrThrow(response: Response) {
+export async function parseJsonOrThrow(response: Response) {
   const text = await response.text();
   let body: unknown;
   if (text) {
@@ -64,53 +64,23 @@ async function parseJsonOrThrow(response: Response) {
   return body;
 }
 
-export async function login(
+export async function getCurrentUser(
   serverUrl: string,
-  username: string,
-  password: string,
-): Promise<TokenResponse> {
-  const body = new URLSearchParams({
-    grant_type: 'password',
-    username,
-    password,
-    scope: REQUESTED_SCOPES,
+  accessToken: string,
+): Promise<RommUser> {
+  const response = await fetch(`${serverUrl}/api/users/me`, {
+    ...bearer(accessToken),
   });
-
-  const response = await fetch(`${serverUrl}/api/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
-
-  return (await parseJsonOrThrow(response)) as TokenResponse;
-}
-
-export async function refreshAccessToken(
-  serverUrl: string,
-  refreshToken: string,
-): Promise<TokenResponse> {
-  const body = new URLSearchParams({
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken,
-  });
-
-  const response = await fetch(`${serverUrl}/api/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
-
-  return (await parseJsonOrThrow(response)) as TokenResponse;
+  return (await parseJsonOrThrow(response)) as RommUser;
 }
 
 function authHeaders(accessToken: string): Record<string, string> {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
-// Bearer calls leave cookies out (credentials: 'omit'). The client may also
-// hold RomM's login session cookie (see ensureRommSession), and with a live
-// session alongside, RomM's CSRF middleware no longer waves bearer requests
-// through: every POST/DELETE would fail CSRF verification with a 403.
+// Bearer calls leave cookies out (credentials: 'omit'): with a RomM login
+// session cookie alongside, RomM's CSRF middleware no longer waves bearer
+// requests through, and every POST/DELETE would fail with a 403.
 function bearer(accessToken: string): RequestInit {
   return {
     headers: authHeaders(accessToken),
@@ -396,8 +366,8 @@ export interface ClaimStreamingSessionOptions {
 
 /**
  * Reserve a streaming container for a rom and start loading it. Answers as
- * soon as the container is reserved; the room URL arrives later over the
- * socket as `streaming:launch-ready` (see api/streamingSession.ts).
+ * soon as the container is reserved; the room URL comes later (see
+ * api/streamingSession.ts).
  */
 export async function claimStreamingSession(
   serverUrl: string,
@@ -502,56 +472,5 @@ export async function releaseStreamingSession(
     }`,
     { method: 'DELETE', ...bearer(accessToken) },
   );
-  await parseJsonOrThrow(response);
-}
-
-export interface RommLoginCredentials {
-  username: string;
-  password: string;
-  /** RomM's session-login endpoint, e.g. "/api/login" (Settings → Login path). */
-  loginPath: string;
-}
-
-// Hermes has both at runtime; React Native's TypeScript config just doesn't
-// declare them.
-const { btoa, TextEncoder } = globalThis as unknown as {
-  btoa(data: string): string;
-  TextEncoder: new () => { encode(input: string): Uint8Array };
-};
-
-function basicAuth(username: string, password: string): string {
-  const bytes = new TextEncoder().encode(`${username}:${password}`);
-  return `Basic ${btoa(String.fromCharCode(...bytes))}`;
-}
-
-/**
- * Make sure this client's cookie store holds a live RomM login session.
- *
- * RomM's socket only puts a connection in its user's room — where streaming
- * launch events are sent — when the handshake carries the `romm_session`
- * cookie; it never looks at bearer tokens. The cookie is left to the
- * platform's own store (`credentials: 'include'`) rather than read back,
- * since fetch hides Set-Cookie from scripts.
- *
- * A live session is reused. Otherwise this signs in with HTTP Basic, which
- * RomM's CSRF middleware lets through as long as no live session is
- * presented alongside it.
- */
-export async function ensureRommSession(
-  serverUrl: string,
-  { username, password, loginPath }: RommLoginCredentials,
-): Promise<void> {
-  const me = await fetch(`${serverUrl}/api/users/me`, {
-    credentials: 'include',
-  });
-  if (me.ok) {
-    return;
-  }
-
-  const response = await fetch(`${serverUrl}${loginPath}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { Authorization: basicAuth(username, password) },
-  });
   await parseJsonOrThrow(response);
 }

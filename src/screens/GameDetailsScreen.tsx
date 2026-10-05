@@ -24,7 +24,6 @@ import { ContentNavigation, RootStackParamList } from '../navigation/types';
 import {
   DEFAULT_IN_BROWSER_PLAY_ENABLED,
   getInBrowserPlayEnabled,
-  getLoginPath,
 } from '../settings/settingsStore';
 import { colors } from '../theme/colors';
 import { formatReleaseDate } from '../utils/formatDate';
@@ -83,7 +82,7 @@ function describeStreamError(e: unknown): string {
  */
 export function GameDetailsScreen({ route, navigation }: Props) {
   const { romId, romName, platformSlug } = route.params;
-  const { withAuth, serverUrl, username, password } = useAuth();
+  const { withAuth, serverUrl } = useAuth();
   const [rom, setRom] = useState<RommRomDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -144,10 +143,8 @@ export function GameDetailsScreen({ route, navigation }: Props) {
     const controller = new AbortController();
     launchAbort.current = controller;
     try {
-      const loginPath = await getLoginPath();
       const session = await withAuth((url, token) =>
         startStreamingSession(url, token, romId, {
-          login: { username, password, loginPath },
           cardImport,
           signal: controller.signal,
           onPhase: phase => setLaunching({ phase }),

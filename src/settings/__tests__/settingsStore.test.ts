@@ -1,18 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   DEFAULT_IN_BROWSER_PLAY_ENABLED,
-  DEFAULT_LOGIN_PATH,
+  getDeviceIdentifier,
   getInBrowserPlayEnabled,
-  getLoginPath,
   setInBrowserPlayEnabled,
-  setLoginPath,
 } from '../settingsStore';
 
 describe('persisted settings', () => {
-  it('defaults to /api/login and in-browser play off', async () => {
-    expect(DEFAULT_LOGIN_PATH).toBe('/api/login');
+  it('defaults to in-browser play off', async () => {
     expect(DEFAULT_IN_BROWSER_PLAY_ENABLED).toBe(false);
-    await expect(getLoginPath()).resolves.toBe('/api/login');
     await expect(getInBrowserPlayEnabled()).resolves.toBe(false);
   });
 
@@ -29,20 +25,12 @@ describe('persisted settings', () => {
     await expect(getInBrowserPlayEnabled()).resolves.toBe(false);
   });
 
-  it('round-trips the login path under a versioned key', async () => {
-    await setLoginPath('/custom/login');
+  it('makes up a device identifier once and keeps it', async () => {
+    const first = await getDeviceIdentifier();
 
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      'rommstream.loginPath.v2',
-      '/custom/login',
-    );
-    await expect(getLoginPath()).resolves.toBe('/custom/login');
-  });
-
-  it('ignores values saved under an older key version', async () => {
-    await AsyncStorage.setItem('rommstream.loginPath.v1', '/old/login');
-
-    await expect(getLoginPath()).resolves.toBe('/api/login');
+    expect(first).toMatch(/^rommstream-[0-9a-f]{32}$/);
+    await expect(getDeviceIdentifier()).resolves.toBe(first);
+    expect(AsyncStorage.setItem).toHaveBeenCalledTimes(1);
   });
 
   it('ignores in-browser play saved on before it defaulted off', async () => {

@@ -8,7 +8,7 @@ import {
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { MockRomm, ROM, startMockRomm } from './mockRommServer';
+import { MockRomm, ROM, startMockRomm, USER_CODE } from './mockRommServer';
 
 /**
  * Smoke test of the desktop build (`npm run build:desktop` first): sign in,
@@ -105,25 +105,36 @@ test.afterAll(async () => {
   fs.rmSync(userData, { recursive: true, force: true });
 });
 
-test('signs in, browses and plays with the keyboard alone', async () => {
+test('pairs, browses and plays with the keyboard alone', async () => {
   await launch();
 
-  // Sign in: the server field has preferred focus; arrows move between fields.
+  // Pair: the server field has preferred focus, and Enter asks for a code.
   await expect(byTestId('login-server-url')).toBeVisible();
   await expect.poll(focusedTestId).toBe('login-server-url');
   await page.keyboard.insertText(romm.url);
-  await page.keyboard.press('ArrowDown');
-  await expect.poll(focusedTestId).toBe('login-username');
-  await page.keyboard.insertText('player');
-  await page.keyboard.press('ArrowDown');
-  await expect.poll(focusedTestId).toBe('login-password');
-  await page.keyboard.insertText('secret');
   await page.keyboard.press('Enter');
+
+  // The TV shows the code and link; nothing happens until it's approved.
+  await expect(byTestId('pairing-user-code')).toHaveText('ABCD-2345');
+  await expect(byTestId('pairing-url')).toHaveText(
+    `${romm.url}/pair/device?user_code=${USER_CODE}`,
+  );
+  await expect(byTestId('pairing-qr')).toBeVisible();
+  await expect.poll(focusedTestId).toBe('pairing-cancel');
+  expect(romm.pairingRequest).toMatchObject({
+    client: 'RommStream',
+    platform: 'desktop',
+    name: 'RommStream (Desktop)',
+  });
+  await expect
+    .poll(() => romm.requests)
+    .toContain('POST /api/auth/device/token');
+  await expect(byTestId('pairing-prompt')).toBeVisible();
+  romm.approveDevice();
 
   // Home: the API was reached without CORS headers, via the main process.
   const tile = `home-recent-tile-${ROM.id}`;
   await expect(byTestId(tile)).toBeVisible();
-  expect(romm.requests).toContain('POST /api/token');
   await expect.poll(focusedTestId).toBe(tile);
 
   // Into the game's details and back out again with Escape (the remote's Back).
@@ -133,21 +144,16 @@ test('signs in, browses and plays with the keyboard alone', async () => {
   await page.keyboard.press('Escape');
   await expect(byTestId('home-tab')).toBeVisible();
 
-  // Launch the game: the app signs in to RomM for its socket, claims a
-  // streaming container and opens the room it reports.
+  // Launch the game: the app claims a streaming container and, once the
+  // session's status reports its room, opens it.
   await expect.poll(focusedTestId).toBe(tile);
   await page.keyboard.press('Enter');
   await expect.poll(focusedTestId).toBe('play-button');
-  // Play works before the route resolves, but lands on the rom page.
   await expect(byTestId('game-details-loading')).toHaveCount(0);
   await page.keyboard.press('Enter');
   await expect.poll(playerGuestUrl).toBe(romm.roomUrl);
-  expect(romm.requests).toContain('POST /api/login');
   expect(romm.requests).toContain('POST /api/streaming/sessions');
-  // The main process put the login cookie on the socket handshake.
-  expect(romm.socketCookies).toEqual([
-    expect.stringContaining('romm_session=session'),
-  ]);
+  expect(romm.requests).toContain('GET /api/streaming/sessions/gb/status');
   await expect
     .poll(() => page.evaluate(() => document.activeElement?.tagName))
     .toBe('WEBVIEW');
@@ -178,7 +184,7 @@ test('signs in, browses and plays with the keyboard alone', async () => {
     .toContain('DELETE /api/streaming/sessions/gb');
 });
 
-test('remembers the sign-in across restarts', async () => {
+test('remembers the pairing across restarts', async () => {
   await app.close();
   await launch();
   await expect(byTestId('main-screen')).toBeVisible();

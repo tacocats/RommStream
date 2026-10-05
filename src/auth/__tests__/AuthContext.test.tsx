@@ -1,12 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import React from 'react';
-import { RommApiError } from '../../api/types';
-import {
-  fetchCall,
-  fetchFormBody,
-  fetchMock,
-  mockFetchOnce,
-} from '../../testUtils/fetchMock';
+import { fetchCall, mockFetchOnce } from '../../testUtils/fetchMock';
 import { AuthProvider, useAuth } from '../AuthContext';
 import {
   loadCredentials,
@@ -15,12 +9,23 @@ import {
   saveTokens,
 } from '../secureStore';
 
-const TOKENS = {
-  access_token: 'access-1',
-  refresh_token: 'refresh-1',
-  token_type: 'bearer',
-  expires: 900,
-  refresh_expires: 86400,
+const CLIENT_TOKEN = `rmm_${'a'.repeat(64)}`;
+
+// interval 0: no waiting between polls in tests.
+const FLOW = {
+  device_code: 'device-secret',
+  user_code: 'ABCD2345',
+  verification_path: '/pair/device',
+  verification_path_complete: '/pair/device?user_code=ABCD2345',
+  expires_in: 600,
+  interval: 0,
+};
+
+const APPROVED = {
+  access_token: CLIENT_TOKEN,
+  device_id: 'device-1',
+  scopes: ['me.read', 'roms.read'],
+  expires_at: null,
 };
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -40,13 +45,13 @@ async function renderAuth() {
   return view;
 }
 
-async function seedSignedIn() {
+async function seedPaired() {
   await saveCredentials({
     serverUrl: 'https://romm.test',
     username: 'player',
-    password: 'pw',
+    authMethod: 'pairing',
   });
-  await saveTokens({ accessToken: 'access-0', refreshToken: 'refresh-0' });
+  await saveTokens({ accessToken: CLIENT_TOKEN });
 }
 
 describe('AuthProvider', () => {
@@ -59,8 +64,8 @@ describe('AuthProvider', () => {
       expect(result.current.accessToken).toBe('');
     });
 
-    it('restores a signed-in session from stored credentials and tokens', async () => {
-      await seedSignedIn();
+    it('restores a paired session', async () => {
+      await seedPaired();
 
       const { result } = await renderAuth();
 
@@ -68,17 +73,33 @@ describe('AuthProvider', () => {
         status: 'signedIn',
         serverUrl: 'https://romm.test',
         username: 'player',
+        accessToken: CLIENT_TOKEN,
+      });
+    });
+
+    it('discards a username and password sign-in from an older release', async () => {
+      await saveCredentials({
+        serverUrl: 'https://romm.test',
+        username: 'player',
         password: 'pw',
+      } as never);
+      await saveTokens({
         accessToken: 'access-0',
         refreshToken: 'refresh-0',
-      });
+      } as never);
+
+      const { result } = await renderAuth();
+
+      expect(result.current.status).toBe('signedOut');
+      await expect(loadCredentials()).resolves.toBeNull();
+      await expect(loadTokens()).resolves.toBeNull();
     });
 
     it('stays signed out when only credentials are stored', async () => {
       await saveCredentials({
         serverUrl: 'https://romm.test',
         username: 'player',
-        password: 'pw',
+        authMethod: 'pairing',
       });
 
       const { result } = await renderAuth();
@@ -87,44 +108,100 @@ describe('AuthProvider', () => {
     });
   });
 
-  describe('signIn', () => {
-    it('normalizes the server URL, exchanges credentials and persists the session', async () => {
+  describe('pairDevice', () => {
+    it('shows the code, waits for approval and persists the issued token', async () => {
       const { result } = await renderAuth();
-      mockFetchOnce({ body: TOKENS });
+      mockFetchOnce({ status: 201, body: FLOW });
+      mockFetchOnce({ status: 400, body: { detail: 'authorization_pending' } });
+      mockFetchOnce({ body: APPROVED });
+      mockFetchOnce({ body: { id: 1, username: 'player' } });
+      const onPrompt = jest.fn();
 
-      await act(() => result.current.signIn('romm.test/', 'player', 'pw'));
+      await act(() => result.current.pairDevice('romm.test/', { onPrompt }));
 
-      expect(fetchCall()[0]).toBe('https://romm.test/api/token');
-      expect(fetchFormBody().get('grant_type')).toBe('password');
+      const [initUrl, init] = fetchCall(0);
+      expect(initUrl).toBe('https://romm.test/api/auth/device/init');
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({
+        client: 'RommStream',
+        requested_scopes: [
+          'me.read',
+          'platforms.read',
+          'roms.read',
+          'collections.read',
+          'roms.user.write',
+        ],
+      });
+      expect(body.client_device_identifier).toMatch(
+        /^rommstream-[0-9a-f]{32}$/,
+      );
+      expect(onPrompt).toHaveBeenCalledWith({
+        userCode: 'ABCD2345',
+        verificationUrl: 'https://romm.test/pair/device?user_code=ABCD2345',
+        expiresInSeconds: 600,
+      });
+      expect(fetchCall(1)[0]).toBe('https://romm.test/api/auth/device/token');
+      expect(JSON.parse(String(fetchCall(2)[1]?.body))).toEqual({
+        device_code: 'device-secret',
+      });
+      expect(fetchCall(3)[1]?.headers).toEqual({
+        Authorization: `Bearer ${CLIENT_TOKEN}`,
+      });
       expect(result.current).toMatchObject({
         status: 'signedIn',
         serverUrl: 'https://romm.test',
         username: 'player',
-        password: 'pw',
-        accessToken: 'access-1',
-        refreshToken: 'refresh-1',
+        accessToken: CLIENT_TOKEN,
       });
       await expect(loadCredentials()).resolves.toEqual({
         serverUrl: 'https://romm.test',
         username: 'player',
-        password: 'pw',
+        authMethod: 'pairing',
       });
       await expect(loadTokens()).resolves.toEqual({
-        accessToken: 'access-1',
-        refreshToken: 'refresh-1',
+        accessToken: CLIENT_TOKEN,
       });
     });
 
-    it('rejects with the server message and persists nothing on failure', async () => {
+    it('pairs again as the same device', async () => {
       const { result } = await renderAuth();
-      mockFetchOnce({
-        status: 401,
-        body: { detail: 'Incorrect username or password' },
-      });
+      for (let i = 0; i < 2; i++) {
+        mockFetchOnce({ status: 201, body: FLOW });
+        mockFetchOnce({ status: 400, body: { detail: 'access_denied' } });
+        await actAsync(() =>
+          result.current.pairDevice('romm.test', { onPrompt: jest.fn() }),
+        ).catch(() => {});
+      }
+
+      const identifier = (call: number) =>
+        JSON.parse(String(fetchCall(call)[1]?.body)).client_device_identifier;
+      expect(identifier(2)).toBe(identifier(0));
+    });
+
+    it("falls back to the device's name when approval left out me.read", async () => {
+      const { result } = await renderAuth();
+      mockFetchOnce({ status: 201, body: FLOW });
+      mockFetchOnce({ body: APPROVED });
+      mockFetchOnce({ status: 403, body: { detail: 'Forbidden' } });
+
+      await act(() =>
+        result.current.pairDevice('romm.test', { onPrompt: jest.fn() }),
+      );
+
+      expect(result.current.status).toBe('signedIn');
+      expect(result.current.username).toMatch(/^RommStream/);
+    });
+
+    it('persists nothing when the pairing is denied', async () => {
+      const { result } = await renderAuth();
+      mockFetchOnce({ status: 201, body: FLOW });
+      mockFetchOnce({ status: 400, body: { detail: 'access_denied' } });
 
       await expect(
-        actAsync(() => result.current.signIn('romm.test', 'player', 'wrong')),
-      ).rejects.toThrow('Incorrect username or password');
+        actAsync(() =>
+          result.current.pairDevice('romm.test', { onPrompt: jest.fn() }),
+        ),
+      ).rejects.toThrow('Pairing was denied in RomM.');
 
       expect(result.current.status).toBe('signedOut');
       await expect(loadCredentials()).resolves.toBeNull();
@@ -134,7 +211,7 @@ describe('AuthProvider', () => {
 
   describe('signOut', () => {
     it('clears the keychain and returns to signed out', async () => {
-      await seedSignedIn();
+      await seedPaired();
       const { result } = await renderAuth();
 
       await act(() => result.current.signOut());
@@ -147,8 +224,8 @@ describe('AuthProvider', () => {
   });
 
   describe('withAuth', () => {
-    it('runs the call with the current server URL and access token', async () => {
-      await seedSignedIn();
+    it('runs the call with the current server URL and token', async () => {
+      await seedPaired();
       const { result } = await renderAuth();
       const fn = jest.fn().mockResolvedValue('payload');
 
@@ -156,82 +233,18 @@ describe('AuthProvider', () => {
         'payload',
       );
 
-      expect(fn).toHaveBeenCalledTimes(1);
-      expect(fn).toHaveBeenCalledWith('https://romm.test', 'access-0');
-      expect(fetchMock()).not.toHaveBeenCalled();
+      expect(fn).toHaveBeenCalledWith('https://romm.test', CLIENT_TOKEN);
     });
 
-    it('refreshes once and retries after a 401', async () => {
-      await seedSignedIn();
+    it('passes failures through', async () => {
+      await seedPaired();
       const { result } = await renderAuth();
-      const fn = jest
-        .fn()
-        .mockRejectedValueOnce(new RommApiError('expired', 401))
-        .mockResolvedValueOnce('payload');
-      mockFetchOnce({ body: TOKENS });
-
-      await expect(actAsync(() => result.current.withAuth(fn))).resolves.toBe(
-        'payload',
-      );
-
-      expect(fetchCall()[0]).toBe('https://romm.test/api/token');
-      expect(fetchFormBody().get('grant_type')).toBe('refresh_token');
-      expect(fetchFormBody().get('refresh_token')).toBe('refresh-0');
-      expect(fn).toHaveBeenNthCalledWith(1, 'https://romm.test', 'access-0');
-      expect(fn).toHaveBeenNthCalledWith(2, 'https://romm.test', 'access-1');
-      expect(result.current.accessToken).toBe('access-1');
-      expect(result.current.refreshToken).toBe('refresh-1');
-      await expect(loadTokens()).resolves.toEqual({
-        accessToken: 'access-1',
-        refreshToken: 'refresh-1',
-      });
-    });
-
-    it('rethrows non-401 errors without refreshing', async () => {
-      await seedSignedIn();
-      const { result } = await renderAuth();
-      const fn = jest
-        .fn()
-        .mockRejectedValue(new RommApiError('server exploded', 500));
+      const fn = jest.fn().mockRejectedValue(new Error('Unauthorized'));
 
       await expect(actAsync(() => result.current.withAuth(fn))).rejects.toThrow(
-        'server exploded',
+        'Unauthorized',
       );
-
       expect(fn).toHaveBeenCalledTimes(1);
-      expect(fetchMock()).not.toHaveBeenCalled();
-    });
-
-    it('rethrows a 401 when there is no refresh token to use', async () => {
-      await saveCredentials({
-        serverUrl: 'https://romm.test',
-        username: 'player',
-        password: 'pw',
-      });
-      await saveTokens({ accessToken: 'access-0', refreshToken: '' });
-      const { result } = await renderAuth();
-      const fn = jest.fn().mockRejectedValue(new RommApiError('expired', 401));
-
-      await expect(actAsync(() => result.current.withAuth(fn))).rejects.toThrow(
-        'expired',
-      );
-
-      expect(fn).toHaveBeenCalledTimes(1);
-      expect(fetchMock()).not.toHaveBeenCalled();
-    });
-
-    it('surfaces a failed refresh', async () => {
-      await seedSignedIn();
-      const { result } = await renderAuth();
-      const fn = jest.fn().mockRejectedValue(new RommApiError('expired', 401));
-      mockFetchOnce({ status: 401, body: { detail: 'refresh token expired' } });
-
-      await expect(actAsync(() => result.current.withAuth(fn))).rejects.toThrow(
-        'refresh token expired',
-      );
-
-      expect(fn).toHaveBeenCalledTimes(1);
-      expect(result.current.accessToken).toBe('access-0');
     });
   });
 });
