@@ -1,0 +1,227 @@
+name: Release
+
+# Builds every platform (Android TV APK, Windows, macOS, Linux) and publishes
+# them as a GitHub Release. See README "Releasing".
+#
+# - Push a tag vMAJOR.MINOR.PATCH, or run this workflow with channel
+#   "release" and a version (the tag is created for you). A suffixed version
+#   (0.2.0-rc.1) is marked as a pre-release.
+# - Run it with channel "prerelease" for a rolling build: it replaces the
+#   single "prerelease" release (and tag) each time.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'release: a versioned release. prerelease: replace the rolling "prerelease" build.'
+        type: choice
+        options: [prerelease, release]
+        default: prerelease
+      version:
+        description: 'Version for channel "release", e.g. 0.2.0 (no leading v). Ignored for prerelease.'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_code: ${{ steps.version.outputs.version_code }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      rolling: ${{ steps.version.outputs.rolling }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: version
+        env:
+          CHANNEL: ${{ github.event_name == 'push' && 'release' || inputs.channel }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          semver='^([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?$'
+          rolling=false
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            version="${GITHUB_REF_NAME#v}"
+          elif [ "$CHANNEL" = release ]; then
+            version="${INPUT_VERSION#v}"
+            if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+              echo "::error::Tag v$version already exists"; exit 1
+            fi
+          else
+            # Next patch after the latest stable tag, e.g. v0.1.0 -> 0.1.1-pre.42.
+            latest=$(git tag -l 'v[0-9]*' --sort=-v:refname | grep -v -- - | head -n1 || true)
+            IFS=. read -r major minor patch <<<"${latest#v}"
+            version="${major:-0}.${minor:-0}.$(( ${patch:-0} + 1 ))-pre.$GITHUB_RUN_NUMBER"
+            rolling=true
+          fi
+          if ! [[ "$version" =~ $semver ]]; then
+            echo "::error::'$version' is not MAJOR.MINOR.PATCH[-suffix]"; exit 1
+          fi
+          major=${BASH_REMATCH[1]} minor=${BASH_REMATCH[2]} patch=${BASH_REMATCH[3]}
+          if (( minor > 99 || patch > 99 )); then
+            echo "::error::minor and patch must stay below 100 (Android versionCode is MMmmpp)"; exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "version_code=$(( major * 10000 + minor * 100 + patch ))"
+            echo "tag=$([ "$rolling" = true ] && echo prerelease || echo "v$version")"
+            echo "prerelease=$([[ "$version" == *-* ]] && echo true || echo false)"
+            echo "rolling=$rolling"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  checks:
+    name: Lint, typecheck, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm test -- --ci
+
+  android:
+    name: Android TV APK
+    needs: [prepare, checks]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      # Never ship a debug-signed APK: Android only installs updates signed
+      # with the same key.
+      - name: Decode release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set; see README \"Releasing\""; exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+      - name: Build release APK
+        working-directory: android
+        env:
+          ROMMSTREAM_KEYSTORE: ${{ runner.temp }}/release.keystore
+          ROMMSTREAM_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ROMMSTREAM_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ROMMSTREAM_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: >
+          ./gradlew assembleRelease --no-daemon
+          -PversionName="$VERSION"
+          -PversionCode=${{ needs.prepare.outputs.version_code }}
+      - run: |
+          mkdir out
+          cp android/app/build/outputs/apk/release/app-release.apk "out/RommStream-$VERSION-androidtv.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: out/*
+          if-no-files-found: error
+
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    needs: [prepare, checks]
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13
+          cache: npm
+      - run: npm ci
+      - name: Install rpm tooling
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+      # Package names and the app's reported version come from package.json.
+      - run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version
+      - run: npm run dist:desktop
+        env:
+          # Unsigned builds for now; see README "Desktop builds".
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-desktop-${{ runner.os }}
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: [prepare, android, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: out
+          merge-multiple: true
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: out/*
+      - name: Replace the rolling prerelease
+        if: needs.prepare.outputs.rolling == 'true'
+        run: |
+          gh release delete "$TAG" --cleanup-tag --yes || true
+          gh release create "$TAG" out/* \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Prerelease $VERSION" \
+            --notes "Rolling build of $GITHUB_SHA. It is replaced by the next prerelease run, so its files and tag move."
+      - name: Create the release
+        if: needs.prepare.outputs.rolling != 'true'
+        run: |
+          flags=()
+          if [ "${{ needs.prepare.outputs.prerelease }}" = true ]; then flags+=(--prerelease); fi
+          gh release create "$TAG" out/* \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes \
+            "${flags[@]}"

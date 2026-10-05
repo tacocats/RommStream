@@ -82,8 +82,10 @@ android {
         applicationId "com.rommstream"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Set by the release workflow from the tag: -PversionName=0.1.0
+        // -PversionCode=100 (MMmmpp), see README "Releasing".
+        versionCode((project.findProperty("versionCode") ?: "1").toInteger())
+        versionName((project.findProperty("versionName") ?: "1.0").toString())
         // Detox instrumentation (see e2e/ and android/app/src/androidTest).
         testBuildType System.getProperty('testBuildType', 'debug')
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
@@ -100,15 +102,24 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        // The real release key, when ROMMSTREAM_KEYSTORE points at it (the
+        // release workflow decodes it from repo secrets).
+        if (System.getenv("ROMMSTREAM_KEYSTORE")) {
+            release {
+                storeFile file(System.getenv("ROMMSTREAM_KEYSTORE"))
+                storePassword System.getenv("ROMMSTREAM_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ROMMSTREAM_KEY_ALIAS")
+                keyPassword System.getenv("ROMMSTREAM_KEY_PASSWORD")
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // Debug key locally unless ROMMSTREAM_KEYSTORE is set (see above).
+            signingConfig signingConfigs.findByName("release") ?: signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             // Detox reaches into React Native via reflection; keep that code un-minified.

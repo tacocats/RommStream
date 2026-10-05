@@ -13,9 +13,9 @@
 
 [![Android TV Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/android-build.yml?branch=master&label=Android%20TV&logo=android)](https://github.com/tacocats/RomMStream/actions/workflows/android-build.yml)
 [![Apple TV Build](https://img.shields.io/badge/Apple%20TV-unavailable-lightgrey?logo=apple)](#)
-[![Windows Build](https://img.shields.io/badge/Windows-unavailable-lightgrey?logo=windows)](#)
+[![Windows Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/desktop-build.yml?branch=master&label=Windows&logo=windows)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
 [![Linux Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/desktop-build.yml?branch=master&label=Linux&logo=linux)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
-[![macOS Build](https://img.shields.io/badge/macOS-unavailable-lightgrey?logo=apple)](#)
+[![macOS Build](https://img.shields.io/github/actions/workflow/status/tacocats/RomMStream/desktop-build.yml?branch=master&label=macOS&logo=apple)](https://github.com/tacocats/RomMStream/actions/workflows/desktop-build.yml)
 
 ---
 
@@ -114,10 +114,12 @@ Things to know:
 
 ### Getting the app
 
-Download the Android TV APK or the Linux AppImage / `.deb` / `.rpm` from the
-[Releases](https://github.com/tacocats/RomMStream/releases) page. Windows
-and macOS builds are not published yet; see [Desktop builds](#desktop-builds)
-to build them yourself.
+Download the Android TV APK, the Windows installer or portable `.exe`, the
+macOS `.dmg` / `.zip`, or the Linux AppImage / `.deb` / `.rpm` from the
+[Releases](https://github.com/tacocats/RomMStream/releases) page. The
+**Prerelease** entry there is a rolling build of recent changes; it is
+replaced every time a new one is made. The desktop builds are unsigned; see
+[Desktop builds](#desktop-builds) for getting past the first-run warnings.
 
 ### Signing in
 
@@ -255,24 +257,39 @@ Using it from the couch:
 
 ### Releasing
 
-Pushing a tag `vMAJOR.MINOR.PATCH` (e.g. `v0.1.0`) runs
-`.github/workflows/release.yml`: lint, typecheck and tests, then the signed
-Android TV APK and the Linux AppImage / `.deb` / `.rpm` (x64 and arm64),
-published as a GitHub Release with generated notes. A suffixed tag
-(`v0.2.0-rc.1`) is marked as a pre-release.
+`.github/workflows/release.yml` runs lint, format check, typecheck and tests,
+then builds the signed Android TV APK and the Windows, macOS and Linux
+packages, and publishes them as a GitHub Release with generated notes.
 
-```sh
-git tag v0.1.0 && git push origin v0.1.0
-```
+There are two ways to run a versioned release:
 
-The version comes from the tag alone: the workflow sets `package.json`'s
-version (Linux package names) and passes `-PversionName` /
-`-PversionCode` to Gradle (`versionCode` = `MMmmpp`, so `0.1.0` → `100`;
+- Push a tag `vMAJOR.MINOR.PATCH`:
+
+  ```sh
+  git tag v0.1.0 && git push origin v0.1.0
+  ```
+
+- Or, in GitHub, open Actions → Release → **Run workflow**, choose channel
+  `release` and enter the version (`0.1.0`). The workflow creates the
+  `v0.1.0` tag on the commit you ran it from.
+
+A suffixed version (`0.2.0-rc.1`) is marked as a pre-release and stays on
+the Releases page like any other.
+
+For a throwaway build, run the workflow with channel `prerelease`. It
+deletes the previous release named `prerelease` (and its tag) and publishes
+a new one at the commit you ran it from, versioned as the patch after the
+latest stable tag plus the run number (`v0.1.0` → `0.1.1-pre.42`). Only one
+exists at a time.
+
+The version comes from the tag (or the workflow input) alone: the workflow
+sets `package.json`'s version (desktop package names) and passes
+`-PversionName` / `-PversionCode` to Gradle (`versionCode` = `MMmmpp`, so `0.1.0` → `100`;
 minor and patch stay below 100).
 
 Every file in the release gets a signed build-provenance attestation
-(`actions/attest`), which ties it to the workflow run and commit that built
-it. The desktop packages aren't code-signed yet, so this is how to check a
+(`actions/attest-build-provenance`), which ties it to the workflow run and
+commit that built it. The desktop packages aren't code-signed yet, so this is how to check a
 download is genuine:
 
 ```sh
