@@ -9,12 +9,13 @@ module.exports = {
   // ESLint ignores dotfiles by default and warns when asked to lint one,
   // which the pre-commit hook (--max-warnings=0) treats as a failure.
   // `website` is a separate Docusaurus project with its own tooling;
-  // dist/ and release/ are desktop build output.
+  // dist/ and release/ are desktop build output; coverage/ is Jest's report.
   ignorePatterns: [
     '!.detoxrc.js',
     'website/',
     'dist/',
     'release/',
+    'coverage/',
     'artifacts/',
   ],
 };
