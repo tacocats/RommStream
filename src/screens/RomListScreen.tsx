@@ -70,7 +70,7 @@ export function RomListScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     navigation.setOptions({ title });
-    load();
+    void load();
   }, [load, navigation, title]);
 
   return (

@@ -68,7 +68,7 @@ export function PlatformsTab({ navigation }: Props) {
     function show(list: RommPlatform[]) {
       log.debug(`show(${list.length}) called`);
       // Start icon resolution before the grid mounts so tiles find them ready.
-      prefetchPlatformIcons(
+      void prefetchPlatformIcons(
         serverUrl,
         list.map(p => [p.fs_slug, p.slug]),
       );
@@ -77,7 +77,7 @@ export function PlatformsTab({ navigation }: Props) {
   }, [withAuth, serverUrl]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   useEffect(() => {

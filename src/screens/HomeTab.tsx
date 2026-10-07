@@ -143,7 +143,7 @@ export function HomeTab({ navigation }: Props) {
   }, [withAuth]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const recommendedRoms = useMemo(

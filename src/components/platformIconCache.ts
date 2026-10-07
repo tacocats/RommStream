@@ -93,10 +93,19 @@ export function inlineSvgClasses(svg: string): string {
   }
 
   const declarationsByClass = new Map<string, string>();
-  const ruleRegex = /([^{}]+)\{([^{}]*)\}/g;
-  let rule: RegExpExecArray | null;
-  while ((rule = ruleRegex.exec(styleMatch[1]))) {
-    const [, selectorList, declarations] = rule;
+  // Each "}" closes a rule; the last "{" before it opens that rule, which
+  // also skips past any enclosing at-rule such as "@media ... {".
+  const chunks = styleMatch[1].split('}');
+  for (const chunk of chunks.slice(0, -1)) {
+    const open = chunk.lastIndexOf('{');
+    if (open < 0) {
+      continue;
+    }
+    const selectorList = chunk.slice(
+      chunk.lastIndexOf('{', open - 1) + 1,
+      open,
+    );
+    const declarations = chunk.slice(open + 1);
     const trimmed = declarations.trim();
     if (!trimmed) {
       continue;
@@ -213,12 +222,14 @@ function track(
   pending: Promise<ResolvedIcon>,
 ): Promise<ResolvedIcon> {
   memory.set(key, pending);
-  pending.then(icon => {
-    // Skip if the entry was invalidated while the probe was in flight.
-    if (memory.get(key) === pending) {
-      settled.set(key, icon);
-    }
-  });
+  pending
+    .then(icon => {
+      // Skip if the entry was invalidated while the probe was in flight.
+      if (memory.get(key) === pending) {
+        settled.set(key, icon);
+      }
+    })
+    .catch(e => log.warn(`icon for ${key} failed to resolve`, e));
   return pending;
 }
 
@@ -282,13 +293,16 @@ export async function prefetchPlatformIcons(
     const raw = stored[STORAGE_PREFIX + key];
     if (raw) {
       try {
-        track(key, Promise.resolve(JSON.parse(raw) as ResolvedIcon));
+        void track(key, Promise.resolve(JSON.parse(raw) as ResolvedIcon));
         continue;
       } catch (e) {
         log.warn('discarding corrupt cached icon', e);
       }
     }
-    track(key, resolveUncached(key, iconCandidates(serverUrl, slugs), false));
+    void track(
+      key,
+      resolveUncached(key, iconCandidates(serverUrl, slugs), false),
+    );
   }
   log.debug(`prefetch: parsed and queued after ${Date.now() - t0}ms`);
 }

@@ -40,12 +40,16 @@ export const PlatformIcon = memo(function PlatformIconView({
     let cancelled = false;
     setIcon(peekPlatformIcon(serverUrl, [fsSlug, slug]));
     const t0 = Date.now();
-    resolvePlatformIcon(serverUrl, [fsSlug, slug]).then(resolved => {
-      log.debug(`${slug} ready after ${Date.now() - t0}ms (${resolved.kind})`);
-      if (!cancelled) {
-        setIcon(resolved);
-      }
-    });
+    resolvePlatformIcon(serverUrl, [fsSlug, slug])
+      .then(resolved => {
+        log.debug(
+          `${slug} ready after ${Date.now() - t0}ms (${resolved.kind})`,
+        );
+        if (!cancelled) {
+          setIcon(resolved);
+        }
+      })
+      .catch(e => log.warn(`${slug} icon failed to resolve`, e));
     return () => {
       cancelled = true;
     };

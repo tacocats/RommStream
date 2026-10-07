@@ -278,11 +278,10 @@ function createWindow(): void {
     mainWindow = null;
   });
 
-  if (DEV_SERVER_URL) {
-    mainWindow.loadURL(DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../web/index.html'));
-  }
+  const loaded = DEV_SERVER_URL
+    ? mainWindow.loadURL(DEV_SERVER_URL)
+    : mainWindow.loadFile(path.join(__dirname, '../web/index.html'));
+  loaded.catch(e => console.error('failed to load the app', e));
 }
 
 /**
@@ -324,19 +323,26 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  app.whenReady().then(() => {
-    appSessions().forEach(trustConfiguredCertificates);
-    restrictPermissions();
-    registerIpc();
-    setUpMenu();
-    createWindow();
+  app
+    .whenReady()
+    .then(() => {
+      appSessions().forEach(trustConfiguredCertificates);
+      restrictPermissions();
+      registerIpc();
+      setUpMenu();
+      createWindow();
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-      }
+      app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          createWindow();
+        }
+      });
+    })
+    .catch(e => {
+      // Without a window there's nothing to show; don't linger headless.
+      console.error('startup failed', e);
+      app.quit();
     });
-  });
 
   // A couch app has one window; closing it means done, macOS included.
   app.on('window-all-closed', () => app.quit());

@@ -98,14 +98,14 @@ export function SearchTab({ navigation }: Props) {
   useEffect(() => {
     pending.current = setTimeout(() => {
       pending.current = null;
-      search(term);
+      void search(term);
     }, SEARCH_DEBOUNCE_MS);
     return cancelPending;
   }, [term, search, cancelPending]);
 
   const submit = () => {
     cancelPending();
-    search(term);
+    void search(term);
   };
 
   const clear = () => {

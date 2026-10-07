@@ -5,6 +5,9 @@ import { FocusablePressable } from '../components/FocusablePressable';
 import { Toggle } from '../components/Toggle';
 import { DesktopPreferences, getDesktopBridge } from '../desktop/bridge';
 import { colors } from '../theme/colors';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('desktopSettings');
 
 /**
  * Desktop-only settings, applied as soon as they're toggled: they belong to
@@ -46,7 +49,10 @@ export function DesktopSettingsSection() {
   const [prefs, setPrefs] = useState<DesktopPreferences | null>(null);
 
   useEffect(() => {
-    bridge?.getPreferences().then(setPrefs);
+    bridge
+      ?.getPreferences()
+      .then(setPrefs)
+      .catch(e => log.warn('failed to read desktop preferences', e));
   }, [bridge]);
 
   if (!bridge || !prefs) {
