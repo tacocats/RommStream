@@ -7,7 +7,6 @@
 ---
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Romm](https://img.shields.io/badge/RomM-5.3.0%2B-blueviolet)](https://github.com/rommapp/romm)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=tacocats_RommStream&metric=alert_status)](https://sonarcloud.io/project/overview?id=tacocats_RommStream)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=tacocats_RommStream&metric=coverage)](https://sonarcloud.io/project/overview?id=tacocats_RommStream)
 
