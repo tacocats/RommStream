@@ -33,7 +33,7 @@ function formatUserCode(code: string): string {
 
 /** "https://romm.home.local/pair?user_code=…" as "romm.home.local/pair". */
 function displayUrl(url: string): string {
-  return url.replace(/^[a-z]+:\/\//i, '').replace(/[?#].*$/, '');
+  return url.replace(/^[a-z]+:\/\//i, '').split(/[?#]/, 1)[0];
 }
 
 /** Below this width the cover wall is dropped and the pairing card stacks. */

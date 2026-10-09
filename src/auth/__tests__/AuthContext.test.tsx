@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import React from 'react';
 import { fetchCall, mockFetchOnce } from '../../testUtils/fetchMock';
 import { AuthProvider, useAuth } from '../AuthContext';
+import * as secureStore from '../secureStore';
 import {
   loadCredentials,
   loadTokens,
@@ -62,6 +63,17 @@ describe('AuthProvider', () => {
       expect(result.current.status).toBe('signedOut');
       expect(result.current.serverUrl).toBe('');
       expect(result.current.accessToken).toBe('');
+    });
+
+    it('is signed out when the keychain cannot be read', async () => {
+      const spy = jest
+        .spyOn(secureStore, 'loadCredentials')
+        .mockRejectedValueOnce(new Error('keychain unavailable'));
+
+      const { result } = await renderAuth();
+
+      expect(result.current.status).toBe('signedOut');
+      spy.mockRestore();
     });
 
     it('restores a paired session', async () => {

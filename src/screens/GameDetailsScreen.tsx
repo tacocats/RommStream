@@ -133,7 +133,7 @@ export function GameDetailsScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     navigation.setOptions({ title: romName });
-    load();
+    void load();
   }, [load, navigation, romName]);
 
   const startStream = async (cardImport?: 'adopt' | 'discard') => {
@@ -182,7 +182,7 @@ export function GameDetailsScreen({ route, navigation }: Props) {
     }
     const path = playPath ?? `/rom/${romId}`;
     if (path.endsWith('/stream')) {
-      startStream();
+      void startStream();
     } else {
       navigation.navigate('EmulatorPlayer', {
         romId,

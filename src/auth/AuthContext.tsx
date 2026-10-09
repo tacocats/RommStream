@@ -97,7 +97,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await clearAll();
       }
       setState(prev => ({ ...prev, status: 'signedOut' }));
-    })();
+    })().catch(e => {
+      // Unreadable storage shouldn't strand the app on the loading screen.
+      log.error('failed to restore the saved sign-in', e);
+      setState(prev => ({ ...prev, status: 'signedOut' }));
+    });
   }, []);
 
   const pairDevice = useCallback<AuthContextValue['pairDevice']>(

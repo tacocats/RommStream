@@ -24,7 +24,10 @@ export const REQUESTED_SCOPES =
   'me.read platforms.read roms.read collections.read roms.user.write';
 
 export function normalizeServerUrl(rawUrl: string): string {
-  const trimmed = rawUrl.trim().replace(/\/+$/, '');
+  let trimmed = rawUrl.trim();
+  while (trimmed.endsWith('/')) {
+    trimmed = trimmed.slice(0, -1);
+  }
   if (!/^https?:\/\//i.test(trimmed)) {
     return `https://${trimmed}`;
   }

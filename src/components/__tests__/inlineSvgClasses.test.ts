@@ -54,4 +54,19 @@ describe('inlineSvgClasses', () => {
 
     expect(inlineSvgClasses(svg)).toContain('<path class="empty"/>');
   });
+  it('inlines rules nested in an at-rule block', () => {
+    const svg =
+      '<svg><style>@media screen { .a { fill: red } }</style><path class="a"/></svg>';
+
+    expect(inlineSvgClasses(svg)).toContain(
+      '<path class="a" style="fill: red"/>',
+    );
+  });
+
+  it('ignores a rule that is never closed', () => {
+    const svg =
+      '<svg><style>.a { fill: red } .b { fill: blue</style><path class="b"/></svg>';
+
+    expect(inlineSvgClasses(svg)).toContain('<path class="b"/>');
+  });
 });
